@@ -5,6 +5,7 @@ import type {
   Order,
   Payment,
 } from "@/lib/orders/types";
+import type { TestFeedbackEntry } from "@/lib/feedback/types";
 import type {
   StaffInvitation,
   StaffMember,
@@ -24,6 +25,7 @@ export type DemoRestaurantState = {
   staffRoles: StaffRoleOption[];
   siigoPendingCount: number;
   orderCounter: number;
+  testFeedback: TestFeedbackEntry[];
 };
 
 function createInitialDemoRestaurantState(): DemoRestaurantState {
@@ -253,6 +255,7 @@ function createInitialDemoRestaurantState(): DemoRestaurantState {
     orders: sampleSales.orders,
     payments: sampleSales.payments,
     cashierSessions: [],
+    testFeedback: [],
   };
 }
 

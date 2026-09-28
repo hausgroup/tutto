@@ -9,6 +9,7 @@ import {
   Warehouse,
   ChefHat,
   CircleDollarSign,
+  MessageSquareWarning,
   type LucideIcon,
 } from "lucide-react";
 
@@ -35,7 +36,17 @@ export const adminNav: AppNavItem[] = [
   { title: "Configuración", href: "/settings", icon: Settings2 },
 ];
 
-const allNav = [...operationNav, ...adminNav, { title: "POS", href: "/pos", icon: UtensilsCrossed }];
+/** Temporary nav for beta testers — remove when no longer needed. */
+export const testingNav: AppNavItem[] = [
+  { title: "Feedback", href: "/feedback", icon: MessageSquareWarning },
+];
+
+const allNav = [
+  ...operationNav,
+  ...adminNav,
+  ...testingNav,
+  { title: "POS", href: "/pos", icon: UtensilsCrossed },
+];
 
 /** Resolve the active page title from the current pathname. */
 export function getPageTitle(pathname: string): string {

@@ -215,6 +215,38 @@ export type Database = {
       payments: LooseTable;
       cashier_sessions: LooseTable;
       staff_invitations: LooseTable;
+      test_feedback: {
+        Row: {
+          id: string;
+          restaurant_id: string;
+          author_id: string;
+          kind: "issue" | "feedback" | "note";
+          title: string;
+          body: string;
+          page_path: string | null;
+          created_at: string;
+        };
+        Insert: {
+          restaurant_id: string;
+          author_id: string;
+          kind?: "issue" | "feedback" | "note";
+          title: string;
+          body?: string;
+          page_path?: string | null;
+        };
+        Update: Partial<
+          Database["public"]["Tables"]["test_feedback"]["Insert"]
+        >;
+        Relationships: [
+          {
+            foreignKeyName: "test_feedback_author_id_fkey";
+            columns: ["author_id"];
+            isOneToOne: false;
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
       siigo_sync_jobs: LooseTable;
     };
     Views: Record<string, never>;

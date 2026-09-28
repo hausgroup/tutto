@@ -23,7 +23,12 @@ import {
   PERMISSIONS,
   type AuthContext,
 } from "@/lib/auth/permissions";
-import { adminNav, operationNav, type AppNavItem } from "@/lib/navigation";
+import {
+  adminNav,
+  operationNav,
+  testingNav,
+  type AppNavItem,
+} from "@/lib/navigation";
 
 function NavItems({
   items,
@@ -96,6 +101,14 @@ export function AppSidebar({ auth }: { auth: AuthContext }) {
           <SidebarGroupContent>
             <SidebarMenu>
               <NavItems items={operationNav} pathname={pathname} />
+            </SidebarMenu>
+          </SidebarGroupContent>
+        </SidebarGroup>
+        <SidebarGroup>
+          <SidebarGroupLabel>Pruebas</SidebarGroupLabel>
+          <SidebarGroupContent>
+            <SidebarMenu>
+              <NavItems items={testingNav} pathname={pathname} />
             </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>
