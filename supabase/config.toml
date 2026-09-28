@@ -1,0 +1,9 @@
+project_id = "haus-pos"
+
+[api]
+enabled = true
+schemas = ["public"]
+extra_search_path = ["public"]
+
+[db]
+major_version = 15
