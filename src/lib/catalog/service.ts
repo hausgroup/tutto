@@ -10,11 +10,15 @@ import type {
 import type {
   CreateCategoryInput,
   CreateProductInput,
+  SetProductActiveInput,
+  UpdateProductInput,
 } from "@/lib/catalog/schemas";
 import {
   fetchCatalogSnapshot,
   insertCategory,
   insertProduct,
+  setProductActive as setProductActiveRow,
+  updateProduct as updateProductRow,
 } from "@/lib/catalog/supabase-repository";
 import {
   getActiveMembership,
@@ -82,6 +86,7 @@ export const catalogService = {
         name: input.name,
         sortOrder: store.catalog.categories.length + 1,
         isActive: true,
+        preparationStation: input.preparationStation,
       };
       store.catalog.categories.push(category);
       return structuredClone(category);
@@ -91,6 +96,7 @@ export const catalogService = {
       restaurantId: input.restaurantId,
       name: input.name,
       sortOrder: 0,
+      preparationStation: input.preparationStation,
     });
   },
 
@@ -138,5 +144,78 @@ export const catalogService = {
       preparationStation: input.preparationStation,
       trackInventory: input.trackInventory,
     });
+  },
+
+  async updateProduct(
+    context: AuthContext,
+    input: UpdateProductInput,
+  ): Promise<Product> {
+    requirePermission(context, PERMISSIONS.PRODUCTS_MANAGE, input.restaurantId);
+    assertRestaurant(context, input.restaurantId);
+
+    if (canUseDemoExperience()) {
+      const store = getDemoRestaurantStore();
+      const product = store.catalog.products.find(
+        (item) =>
+          item.id === input.productId &&
+          item.restaurantId === input.restaurantId,
+      );
+      if (!product) throw new Error("PRODUCT_NOT_FOUND");
+      const category = store.catalog.categories.find(
+        (item) => item.id === input.categoryId,
+      );
+      if (!category) throw new Error("CATEGORY_NOT_FOUND");
+
+      Object.assign(product, {
+        categoryId: input.categoryId,
+        name: input.name,
+        description: input.description,
+        sku: input.sku,
+        priceMinor: input.priceMinor,
+        costMinor: input.costMinor,
+        taxRateBps: input.taxRateBps,
+        preparationStation: input.preparationStation,
+        trackInventory: input.trackInventory,
+        isActive: input.isActive,
+      });
+      return structuredClone(product);
+    }
+
+    return updateProductRow({
+      restaurantId: input.restaurantId,
+      productId: input.productId,
+      categoryId: input.categoryId,
+      name: input.name,
+      description: input.description,
+      sku: input.sku,
+      priceMinor: input.priceMinor,
+      costMinor: input.costMinor,
+      taxRateBps: input.taxRateBps,
+      preparationStation: input.preparationStation,
+      trackInventory: input.trackInventory,
+      isActive: input.isActive,
+    });
+  },
+
+  async setProductActive(
+    context: AuthContext,
+    input: SetProductActiveInput,
+  ): Promise<Product> {
+    requirePermission(context, PERMISSIONS.PRODUCTS_MANAGE, input.restaurantId);
+    assertRestaurant(context, input.restaurantId);
+
+    if (canUseDemoExperience()) {
+      const store = getDemoRestaurantStore();
+      const product = store.catalog.products.find(
+        (item) =>
+          item.id === input.productId &&
+          item.restaurantId === input.restaurantId,
+      );
+      if (!product) throw new Error("PRODUCT_NOT_FOUND");
+      product.isActive = input.isActive;
+      return structuredClone(product);
+    }
+
+    return setProductActiveRow(input);
   },
 };

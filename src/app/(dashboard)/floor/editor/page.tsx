@@ -23,9 +23,6 @@ export default async function FloorEditorPage() {
 
   return (
     <div className="flex min-h-[calc(100dvh-7.5rem)] flex-col gap-3 md:min-h-[calc(100dvh-8.5rem)]">
-      <p className="shrink-0 text-sm text-muted-foreground">
-        Misma vista del salón: coloca mesas en casillas de la cuadrícula.
-      </p>
       <FloorPlanEditor
         key={`${restaurantId}-${snapshot.tables.length}-${snapshot.areas.length}`}
         initialSnapshot={snapshot}

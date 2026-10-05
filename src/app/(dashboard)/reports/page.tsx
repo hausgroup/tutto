@@ -5,6 +5,7 @@ import { useMockReports } from "@/lib/env";
 import { reportService } from "@/lib/orders/service";
 import { getSiigoPendingCount } from "@/lib/siigo/sync-jobs";
 import { ReportsDashboard } from "@/components/reports/reports-dashboard";
+import { ReportsPageHeader } from "@/components/reports/reports-page-header";
 
 export const metadata: Metadata = { title: "Reportes" };
 
@@ -20,10 +21,13 @@ export default async function ReportsPage() {
   const siigoPending = await getSiigoPendingCount(restaurantId);
 
   return (
-    <ReportsDashboard
+    <>
+      <ReportsPageHeader />
+      <ReportsDashboard
       reports={reports}
       siigoPending={siigoPending}
       isMock={useMockReports()}
     />
+    </>
   );
 }

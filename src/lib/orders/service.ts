@@ -12,8 +12,13 @@ import {
 import { fetchCatalogSnapshot } from "@/lib/catalog/supabase-repository";
 import { inventoryService } from "@/lib/inventory/service";
 import {
+  orderHasAnyActiveItems,
+  orderHasSentBill,
+  recalculateOrderBillTotals,
+  unpaidSentBillTotals,
+} from "@/lib/orders/bill-segments";
+import {
   calculateLineItem,
-  sumOrderTotals,
 } from "@/lib/orders/calculate";
 import { consolidateWithMealOrderLines } from "@/lib/orders/consolidate-lines";
 import type {
@@ -32,6 +37,7 @@ import { buildMockRestaurantReports } from "@/lib/orders/mock-reports";
 import { pendingBarDrinksByTableFromOrders } from "@/lib/orders/bar-delivery";
 import {
   canMoveBarUnitToWithMeal,
+  canRemoveLineFromPosTicket,
   catalogProductIsPosBarDrink,
   deriveOrderStatusFromItems,
   findWithMealLineToMerge,
@@ -53,28 +59,13 @@ import { enqueueSiigoSyncJob } from "@/lib/siigo/sync-jobs";
 import { printReceipt } from "@/lib/printing";
 
 function recalculateOrder(order: Order) {
-  const totals = sumOrderTotals(
-    order.items.map((item) => ({
-      lineSubtotalMinor: item.lineSubtotalMinor,
-      lineTaxMinor: item.lineTaxMinor,
-      lineTotalMinor: item.lineTotalMinor,
-    })),
-  );
-  order.subtotalMinor = totals.subtotalMinor;
-  order.taxMinor = totals.taxMinor;
-  order.totalMinor = totals.totalMinor - order.discountMinor;
+  recalculateOrderBillTotals(order);
 }
 
 function findTableLabel(tableId: string | null) {
   if (!tableId) return null;
   const table = getDemoFloorStore().tables.find((t) => t.id === tableId);
   return table?.label ?? null;
-}
-
-function orderHasBill(order: Order): boolean {
-  return order.items.some(
-    (item) => item.status !== "cancelled" && item.quantity > 0,
-  );
 }
 
 async function catalogCategoriesFor(
@@ -92,11 +83,10 @@ function tableStatusForOrder(order: Order): TableStatus | null {
     case "voided":
       return "available";
     case "ready":
-      return orderHasBill(order) ? "order_ready" : "available";
+      return orderHasSentBill(order) ? "order_ready" : "available";
     case "open":
     case "in_progress":
-      // Empty tickets stay free — occupied only once there's a bill.
-      return orderHasBill(order) ? "occupied" : "available";
+      return orderHasSentBill(order) ? "occupied" : "available";
     default:
       return null;
   }
@@ -224,7 +214,7 @@ export const orderService = {
       tableId,
     );
     if (!order) return;
-    if (orderHasBill(order)) {
+    if (orderHasAnyActiveItems(order)) {
       throw new Error("TABLE_HAS_ACTIVE_ORDER");
     }
 
@@ -309,6 +299,7 @@ export const orderService = {
           modifierName: m.name,
           priceMinorDelta: m.priceMinorDelta,
         })),
+        sentAt: null,
       };
 
       order.items.push(item);
@@ -594,6 +585,63 @@ export const orderService = {
     return withTotals;
   },
 
+  async removeOrderLine(
+    context: AuthContext,
+    input: {
+      restaurantId: string;
+      orderId: string;
+      itemId: string;
+    },
+  ): Promise<Order> {
+    requirePermission(context, PERMISSIONS.ORDERS_MODIFY, input.restaurantId);
+
+    if (canUseDemoExperience()) {
+      const store = getDemoRestaurantStore();
+      const order = store.orders.find((o) => o.id === input.orderId);
+      if (!order || order.status === "completed") {
+        throw new Error("ORDER_NOT_FOUND");
+      }
+      const item = order.items.find((line) => line.id === input.itemId);
+      if (!item) throw new Error("ORDER_ITEM_NOT_FOUND");
+      if (!canRemoveLineFromPosTicket(item)) {
+        throw new Error("ORDER_ITEM_NOT_REMOVABLE");
+      }
+      order.items = order.items.filter((line) => line.id !== input.itemId);
+      order.status = deriveOrderStatusFromItems(order.items, order.status);
+      recalculateOrder(order);
+      await syncTableForOrder(context, input.restaurantId, order);
+      return structuredClone(order);
+    }
+
+    const order = await ordersDb.fetchOrderById(input.orderId);
+    if (
+      !order ||
+      order.restaurantId !== input.restaurantId ||
+      order.status === "completed"
+    ) {
+      throw new Error("ORDER_NOT_FOUND");
+    }
+    const item = order.items.find((line) => line.id === input.itemId);
+    if (!item) throw new Error("ORDER_ITEM_NOT_FOUND");
+    if (!canRemoveLineFromPosTicket(item)) {
+      throw new Error("ORDER_ITEM_NOT_REMOVABLE");
+    }
+
+    await ordersDb.deleteOrderItem(item.id);
+    const refreshed = await ordersDb.fetchOrderById(order.id);
+    if (!refreshed) throw new Error("ORDER_NOT_FOUND");
+    recalculateOrder(refreshed);
+    await ordersDb.updateOrderTotals(order.id, {
+      subtotalMinor: refreshed.subtotalMinor,
+      taxMinor: refreshed.taxMinor,
+      totalMinor: refreshed.totalMinor,
+      status: refreshed.items.length === 0 ? "open" : refreshed.status,
+    });
+    const withTotals = (await ordersDb.fetchOrderById(order.id))!;
+    await syncTableForOrder(context, input.restaurantId, withTotals);
+    return withTotals;
+  },
+
   async moveBarDrinkUnitToWithMeal(
     context: AuthContext,
     input: {
@@ -680,6 +728,7 @@ export const orderService = {
           serveTiming: "with_meal",
           notes: item.notes,
           modifiers: structuredClone(item.modifiers),
+          sentAt: null,
         });
       }
 
@@ -824,10 +873,15 @@ export const orderService = {
       const order = store.orders.find((o) => o.id === orderId);
       if (!order) throw new Error("ORDER_NOT_FOUND");
 
+      const sentAt = new Date().toISOString();
       for (const item of order.items) {
-        if (item.status === "pending") item.status = "sent";
+        if (item.status === "pending") {
+          item.status = "sent";
+          item.sentAt = sentAt;
+        }
       }
       order.status = "in_progress";
+      recalculateOrder(order);
       await syncTableForOrder(context, restaurantId, order);
       return structuredClone(order);
     }
@@ -839,9 +893,54 @@ export const orderService = {
 
     await ordersDb.markPendingItemsSent(orderId);
     const refreshed = (await ordersDb.fetchOrderById(orderId))!;
+    recalculateOrder(refreshed);
     refreshed.status = "in_progress";
-    await syncTableForOrder(context, restaurantId, refreshed);
-    return refreshed;
+    await ordersDb.updateOrderTotals(orderId, {
+      subtotalMinor: refreshed.subtotalMinor,
+      taxMinor: refreshed.taxMinor,
+      totalMinor: refreshed.totalMinor,
+      status: refreshed.status,
+    });
+    const withTotals = (await ordersDb.fetchOrderById(orderId))!;
+    await syncTableForOrder(context, restaurantId, withTotals);
+    return withTotals;
+  },
+
+  async getOrderCheckoutSummary(
+    context: AuthContext,
+    restaurantId: string,
+    orderId: string,
+  ): Promise<{ paidMinor: number; billTotalMinor: number; remainingMinor: number }> {
+    requirePermission(context, PERMISSIONS.PAYMENTS_PROCESS, restaurantId);
+
+    if (canUseDemoExperience()) {
+      const store = getDemoRestaurantStore();
+      const order = store.orders.find((o) => o.id === orderId);
+      if (!order || order.restaurantId !== restaurantId) {
+        throw new Error("ORDER_NOT_FOUND");
+      }
+      const billTotalMinor = unpaidSentBillTotals(order).totalMinor;
+      const paidMinor = store.payments
+        .filter((p) => p.orderId === orderId && p.status === "completed")
+        .reduce((sum, p) => sum + p.amountMinor, 0);
+      return {
+        paidMinor,
+        billTotalMinor,
+        remainingMinor: Math.max(0, billTotalMinor - paidMinor),
+      };
+    }
+
+    const order = await ordersDb.fetchOrderById(orderId);
+    if (!order || order.restaurantId !== restaurantId) {
+      throw new Error("ORDER_NOT_FOUND");
+    }
+    const billTotalMinor = unpaidSentBillTotals(order).totalMinor;
+    const paidMinor = await ordersDb.sumCompletedPaymentsForOrder(orderId);
+    return {
+      paidMinor,
+      billTotalMinor,
+      remainingMinor: Math.max(0, billTotalMinor - paidMinor),
+    };
   },
 
   async completePayment(
@@ -852,37 +951,28 @@ export const orderService = {
       methodCode: string;
       amountMinor: number;
     },
-  ): Promise<{ order: Order; payment: Payment }> {
+  ): Promise<{
+    order: Order;
+    payment: Payment;
+    remainingMinor: number;
+    orderCompleted: boolean;
+  }> {
     requirePermission(context, PERMISSIONS.PAYMENTS_PROCESS, input.restaurantId);
+    if (input.amountMinor <= 0) throw new Error("INVALID_PAYMENT_AMOUNT");
 
     if (canUseDemoExperience()) {
       const store = getDemoRestaurantStore();
       const order = store.orders.find((o) => o.id === input.orderId);
       if (!order) throw new Error("ORDER_NOT_FOUND");
-      if (input.amountMinor < order.totalMinor) {
-        throw new Error("INSUFFICIENT_PAYMENT");
-      }
 
-      for (const item of order.items) {
-        if (item.status !== "cancelled") {
-          item.status = "delivered";
-          if (
-            store.catalog.products.find((p) => p.id === item.productId)
-              ?.trackInventory
-          ) {
-            await inventoryService.consumeForProductSale(
-              input.restaurantId,
-              item.productId,
-              item.quantity,
-              item.id,
-            );
-          }
-        }
+      const billTotalMinor = unpaidSentBillTotals(order).totalMinor;
+      const paidBefore = store.payments
+        .filter((p) => p.orderId === order.id && p.status === "completed")
+        .reduce((sum, p) => sum + p.amountMinor, 0);
+      const remainingBefore = billTotalMinor - paidBefore;
+      if (input.amountMinor > remainingBefore) {
+        throw new Error("PAYMENT_EXCEEDS_REMAINING");
       }
-
-      order.status = "completed";
-      order.closedAt = new Date().toISOString();
-      await syncTableForOrder(context, input.restaurantId, order);
 
       const payment: Payment = {
         id: randomUUID(),
@@ -904,43 +994,64 @@ export const orderService = {
         }
       }
 
-      await enqueueSiigoSyncJob({
-        restaurantId: input.restaurantId,
-        entityType: "order",
-        entityId: order.id,
-        operation: "create_invoice",
-      });
+      const remainingAfter = remainingBefore - input.amountMinor;
+      let orderCompleted = false;
+      if (remainingAfter <= 0) {
+        orderCompleted = true;
+        for (const item of order.items) {
+          if (item.status !== "cancelled") {
+            item.status = "delivered";
+            if (
+              store.catalog.products.find((p) => p.id === item.productId)
+                ?.trackInventory
+            ) {
+              await inventoryService.consumeForProductSale(
+                input.restaurantId,
+                item.productId,
+                item.quantity,
+                item.id,
+              );
+            }
+          }
+        }
+        order.status = "completed";
+        order.closedAt = new Date().toISOString();
+        await syncTableForOrder(context, input.restaurantId, order);
 
-      await printReceipt({
-        restaurantId: input.restaurantId,
-        payload: { orderId: order.id, orderNumber: order.orderNumber },
-      });
+        await enqueueSiigoSyncJob({
+          restaurantId: input.restaurantId,
+          entityType: "order",
+          entityId: order.id,
+          operation: "create_invoice",
+        });
 
-      return { order: structuredClone(order), payment };
+        await printReceipt({
+          restaurantId: input.restaurantId,
+          payload: { orderId: order.id, orderNumber: order.orderNumber },
+        });
+      }
+
+      return {
+        order: structuredClone(order),
+        payment,
+        remainingMinor: Math.max(0, remainingAfter),
+        orderCompleted,
+      };
     }
 
     const order = await ordersDb.fetchOrderById(input.orderId);
     if (!order || order.restaurantId !== input.restaurantId) {
       throw new Error("ORDER_NOT_FOUND");
     }
-    if (input.amountMinor < order.totalMinor) {
-      throw new Error("INSUFFICIENT_PAYMENT");
+
+    const billTotalMinor = unpaidSentBillTotals(order).totalMinor;
+    const paidBefore = await ordersDb.sumCompletedPaymentsForOrder(order.id);
+    const remainingBefore = billTotalMinor - paidBefore;
+    if (input.amountMinor > remainingBefore) {
+      throw new Error("PAYMENT_EXCEEDS_REMAINING");
     }
 
-    for (const item of order.items) {
-      if (item.status === "cancelled") continue;
-      const product = await fetchProductById(input.restaurantId, item.productId);
-      if (product?.trackInventory) {
-        await inventoryService.consumeForProductSale(
-          input.restaurantId,
-          item.productId,
-          item.quantity,
-          item.id,
-        );
-      }
-    }
-
-    const payment = await ordersDb.completeOrderPayment({
+    const payment = await ordersDb.insertOrderPayment({
       restaurantId: input.restaurantId,
       orderId: order.id,
       methodCode: input.methodCode,
@@ -954,30 +1065,49 @@ export const orderService = {
       amountMinor: payment.amountMinor,
     });
 
-    const completedOrder =
+    const remainingAfter = remainingBefore - input.amountMinor;
+    let orderCompleted = false;
+    if (remainingAfter <= 0) {
+      orderCompleted = true;
+      for (const item of order.items) {
+        if (item.status === "cancelled") continue;
+        const product = await fetchProductById(input.restaurantId, item.productId);
+        if (product?.trackInventory) {
+          await inventoryService.consumeForProductSale(
+            input.restaurantId,
+            item.productId,
+            item.quantity,
+            item.id,
+          );
+        }
+      }
+      await ordersDb.finalizeOrderFulfillment(order.id);
+      await enqueueSiigoSyncJob({
+        restaurantId: input.restaurantId,
+        entityType: "order",
+        entityId: order.id,
+        operation: "create_invoice",
+      });
+      await printReceipt({
+        restaurantId: input.restaurantId,
+        payload: { orderId: order.id, orderNumber: order.orderNumber },
+      });
+    }
+
+    const refreshed =
       (await ordersDb.fetchOrderById(order.id)) ?? {
         ...order,
-        status: "completed" as const,
-        closedAt: new Date().toISOString(),
+        status: orderCompleted ? ("completed" as const) : order.status,
+        closedAt: orderCompleted ? new Date().toISOString() : order.closedAt,
       };
-    await syncTableForOrder(context, input.restaurantId, completedOrder);
+    await syncTableForOrder(context, input.restaurantId, refreshed);
 
-    await enqueueSiigoSyncJob({
-      restaurantId: input.restaurantId,
-      entityType: "order",
-      entityId: order.id,
-      operation: "create_invoice",
-    });
-
-    await printReceipt({
-      restaurantId: input.restaurantId,
-      payload: { orderId: order.id, orderNumber: order.orderNumber },
-    });
-
-    if (!(await ordersDb.fetchOrderById(order.id))) {
-      throw new Error("ORDER_NOT_FOUND");
-    }
-    return { order: completedOrder, payment };
+    return {
+      order: refreshed,
+      payment,
+      remainingMinor: Math.max(0, remainingAfter),
+      orderCompleted,
+    };
   },
 
   async listOrders(context: AuthContext, restaurantId: string) {
@@ -1006,14 +1136,14 @@ export const orderService = {
         ) {
           continue;
         }
+        if (!orderHasSentBill(order)) continue;
         totals[order.tableId] =
           (totals[order.tableId] ?? 0) + order.totalMinor;
       }
       return totals;
     }
 
-    const orders = await ordersDb.fetchOpenBillTotalsByTableId(restaurantId);
-    return orders;
+    return ordersDb.fetchOpenBillTotalsByTableId(restaurantId);
   },
 
   async getPendingBarDrinksByTableId(
@@ -1191,14 +1321,34 @@ export const reportService = {
     const yearMonth = options?.yearMonth ?? currentYearMonthInBogota();
 
     if (useMockReports()) {
-      return buildMockRestaurantReports(yearMonth);
+      const { fetchHistoricalSalesForMonth } = await import(
+        "@/lib/reports/historical-sales/repository"
+      );
+      const historical = await fetchHistoricalSalesForMonth(
+        restaurantId,
+        yearMonth,
+      );
+      if (historical.length === 0) {
+        return buildMockRestaurantReports(yearMonth);
+      }
     }
 
     if (canUseDemoExperience()) {
       const store = getDemoRestaurantStore();
+      const { fetchHistoricalSalesForMonth } = await import(
+        "@/lib/reports/historical-sales/repository"
+      );
+      const { historicalRecordsToOrdersAndPayments } = await import(
+        "@/lib/reports/historical-sales/to-orders"
+      );
+      const historical = await fetchHistoricalSalesForMonth(
+        restaurantId,
+        yearMonth,
+      );
+      const merged = historicalRecordsToOrdersAndPayments(historical);
       return aggregateRestaurantReports({
-        orders: store.orders,
-        payments: store.payments,
+        orders: [...store.orders, ...merged.orders],
+        payments: [...store.payments, ...merged.payments],
         yearMonth,
       });
     }

@@ -68,10 +68,9 @@ export function resolveServeTiming(
 }
 
 export function initialItemStatusForServeTiming(
-  serveTiming: DrinkServeTiming | null,
-  isPosBarDrink: boolean,
+  _serveTiming: DrinkServeTiming | null,
+  _isPosBarDrink: boolean,
 ): OrderItemStatus {
-  if (isPosBarDrink && serveTiming === "immediate") return "sent";
   return "pending";
 }
 
@@ -186,7 +185,10 @@ export function linesMatchForQuantityAdjust(
     if (delta > 0) return item.status === "pending";
     return canRemoveLineFromPosTicket(item);
   }
-  return enseguidaLinesMatch(item, productId, serveTiming);
+  if (item.serveTiming === "with_meal") return false;
+  if (!isEnseguidaServePool(serveTiming)) return false;
+  if (delta > 0) return item.status === "pending";
+  return item.status === "pending" || item.status === "sent";
 }
 
 export function withMealLinesMatch(

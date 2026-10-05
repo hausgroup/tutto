@@ -37,6 +37,9 @@ export function createDemoFloorSnapshot(): FloorSnapshot {
           guestName: "María López",
           partySize: 3,
           occasion: "Cumpleaños",
+          scheduledAt: new Date(
+            Date.now() + 2 * 60 * 60 * 1000,
+          ).toISOString(),
         },
       },
       {

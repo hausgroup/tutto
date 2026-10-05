@@ -10,6 +10,7 @@ export const PREPARATION_STATIONS = [
 export const createCategorySchema = z.object({
   restaurantId: z.string().uuid(),
   name: z.string().trim().min(1).max(80),
+  preparationStation: z.enum(PREPARATION_STATIONS).default("kitchen"),
 });
 
 export const createProductSchema = z.object({
@@ -37,5 +38,18 @@ export const createProductSchema = z.object({
   trackInventory: z.boolean().default(false),
 });
 
+export const updateProductSchema = createProductSchema.extend({
+  productId: z.string().uuid(),
+  isActive: z.boolean(),
+});
+
+export const setProductActiveSchema = z.object({
+  restaurantId: z.string().uuid(),
+  productId: z.string().uuid(),
+  isActive: z.boolean(),
+});
+
 export type CreateCategoryInput = z.infer<typeof createCategorySchema>;
 export type CreateProductInput = z.infer<typeof createProductSchema>;
+export type UpdateProductInput = z.infer<typeof updateProductSchema>;
+export type SetProductActiveInput = z.infer<typeof setProductActiveSchema>;

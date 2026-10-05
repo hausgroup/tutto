@@ -1,7 +1,19 @@
 "use client";
 
 import * as React from "react";
-import { ThemeProvider as NextThemesProvider } from "next-themes";
+import { ThemeProvider as NextThemesProvider, useTheme } from "next-themes";
+
+/** Arc components read `data-theme` on `<html>`; Tailwind keeps using `class="dark"`. */
+function ArcThemeSync() {
+  const { resolvedTheme } = useTheme();
+
+  React.useEffect(() => {
+    const root = document.documentElement;
+    root.dataset.theme = resolvedTheme === "dark" ? "dark" : "light";
+  }, [resolvedTheme]);
+
+  return null;
+}
 
 export function ThemeProvider({
   children,
@@ -15,6 +27,7 @@ export function ThemeProvider({
       disableTransitionOnChange
       {...props}
     >
+      <ArcThemeSync />
       {children}
     </NextThemesProvider>
   );

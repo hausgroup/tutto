@@ -13,6 +13,10 @@ export type PosActionState = {
   ok?: boolean;
   error?: string;
   order?: Order;
+  remainingMinor?: number;
+  orderCompleted?: boolean;
+  paidMinor?: number;
+  billTotalMinor?: number;
 };
 
 function mapError(error: unknown): PosActionState {
@@ -22,6 +26,10 @@ function mapError(error: unknown): PosActionState {
         return { error: "No tienes permiso." };
       case "INSUFFICIENT_PAYMENT":
         return { error: "El monto pagado es menor al total." };
+      case "PAYMENT_EXCEEDS_REMAINING":
+        return { error: "El monto supera lo que falta por cobrar." };
+      case "INVALID_PAYMENT_AMOUNT":
+        return { error: "Ingresa un monto válido." };
       case "TABLE_HAS_ACTIVE_ORDER":
         return {
           error:
@@ -34,6 +42,8 @@ function mapError(error: unknown): PosActionState {
       case "ORDER_ITEM_NOT_FOUND":
       case "ORDER_ITEM_NOT_EDITABLE":
         return { error: "No se puede mover esta bebida." };
+      case "ORDER_ITEM_NOT_REMOVABLE":
+        return { error: "No se puede eliminar esta línea." };
       case "SESSION_ALREADY_OPEN":
         return { error: "Ya hay una caja abierta." };
       default:
@@ -78,6 +88,25 @@ export async function addProductToOrderAction(input: {
   }
 }
 
+export async function removeOrderLineAction(input: {
+  orderId: string;
+  itemId: string;
+}): Promise<PosActionState> {
+  try {
+    const context = await resolveAuthContext();
+    const restaurantId = getDefaultRestaurantId(context);
+    if (!restaurantId) throw new Error("RESTAURANT_NOT_FOUND");
+    const order = await orderService.removeOrderLine(context, {
+      restaurantId,
+      orderId: input.orderId,
+      itemId: input.itemId,
+    });
+    return { ok: true, order };
+  } catch (error) {
+    return mapError(error);
+  }
+}
+
 export async function adjustOrderProductQuantityAction(input: {
   orderId: string;
   productId: string;
@@ -112,7 +141,6 @@ export async function sendOrderAction(orderId: string): Promise<PosActionState> 
       restaurantId,
       orderId,
     );
-    revalidateFloorSurfaces();
     return { ok: true, order };
   } catch (error) {
     return mapError(error);
@@ -145,6 +173,7 @@ export async function reserveTableFromPosAction(input: {
   guestName: string;
   partySize: number;
   occasion: string;
+  scheduledAt: string;
 }): Promise<PosActionState> {
   try {
     const context = await resolveAuthContext();
@@ -156,10 +185,34 @@ export async function reserveTableFromPosAction(input: {
       guestName: input.guestName,
       partySize: input.partySize,
       occasion: input.occasion,
+      scheduledAt: input.scheduledAt,
     });
     await floorService.reserveTable(context, parsed);
     revalidateFloorSurfaces();
     return { ok: true };
+  } catch (error) {
+    return mapError(error);
+  }
+}
+
+export async function getOrderCheckoutAction(
+  orderId: string,
+): Promise<PosActionState> {
+  try {
+    const context = await resolveAuthContext();
+    const restaurantId = getDefaultRestaurantId(context);
+    if (!restaurantId) throw new Error("RESTAURANT_NOT_FOUND");
+    const summary = await orderService.getOrderCheckoutSummary(
+      context,
+      restaurantId,
+      orderId,
+    );
+    return {
+      ok: true,
+      paidMinor: summary.paidMinor,
+      billTotalMinor: summary.billTotalMinor,
+      remainingMinor: summary.remainingMinor,
+    };
   } catch (error) {
     return mapError(error);
   }
@@ -174,39 +227,37 @@ export async function payOrderAction(input: {
     const context = await resolveAuthContext();
     const restaurantId = getDefaultRestaurantId(context);
     if (!restaurantId) throw new Error("RESTAURANT_NOT_FOUND");
-    const { order } = await orderService.completePayment(context, {
+    const result = await orderService.completePayment(context, {
       restaurantId,
       orderId: input.orderId,
       methodCode: input.methodCode,
       amountMinor: input.amountMinor,
     });
     revalidateAfterPayment();
-    return { ok: true, order };
+    return {
+      ok: true,
+      order: result.order,
+      remainingMinor: result.remainingMinor,
+      orderCompleted: result.orderCompleted,
+    };
   } catch (error) {
     return mapError(error);
   }
 }
 
-export async function adjustInventoryAction(input: {
-  ingredientId: string;
-  quantityDelta: number;
-  notes?: string;
-}): Promise<PosActionState> {
-  try {
-    const context = await resolveAuthContext();
-    const restaurantId = getDefaultRestaurantId(context);
-    if (!restaurantId) throw new Error("RESTAURANT_NOT_FOUND");
-    await inventoryService.adjustStock(context, {
-      restaurantId,
-      ingredientId: input.ingredientId,
-      quantityDelta: input.quantityDelta,
-      notes: input.notes,
-    });
-    revalidatePath("/inventory");
-    return { ok: true };
-  } catch (error) {
-    return mapError(error);
-  }
+export async function adjustInventoryAction(
+  input: {
+    ingredientId: string;
+    quantityDelta: number;
+    notes?: string;
+  },
+): Promise<PosActionState> {
+  const { adjustInventoryAction: adjust } = await import(
+    "@/lib/inventory/actions"
+  );
+  const result = await adjust(input);
+  if (result.error) return { error: result.error };
+  return { ok: true };
 }
 
 export async function openCashierAction(

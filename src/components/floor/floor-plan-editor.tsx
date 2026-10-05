@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useMemo, useState, useTransition } from "react";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import {
@@ -9,32 +8,25 @@ import {
   createTableAction,
   deleteFloorAreaAction,
   deleteTableAction,
+  renameFloorAreaAction,
+  reorderFloorAreasAction,
   saveTableLayoutAction,
   saveTablePropertiesAction,
   type FloorActionState,
 } from "@/lib/floor/actions";
 import { FloorGridView } from "@/components/floor/floor-grid-view";
-import { TableStatusBadge } from "@/components/floor/table-status-badge";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { FloorZonePills } from "@/components/floor/floor-zone-pills";
+import { ArcLinkButton } from "@/components/arc/arc-link-button";
+import { Button } from "@/components/arc/button/button";
 import {
   Dialog,
   DialogContent,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
   DialogTrigger,
-} from "@/components/ui/dialog";
-import { Switch } from "@/components/ui/switch";
+} from "@/components/arc/dialog/dialog";
+import { Input } from "@/components/arc/input/input";
+import { Select } from "@/components/arc/select/select";
+import { Switch } from "@/components/arc/switch/switch";
+import { TableStatusBadge } from "@/components/floor/table-status-badge";
 import type {
   FloorArea,
   FloorSnapshot,
@@ -50,8 +42,9 @@ import {
   tableToGridCell,
   type GridCell,
 } from "@/lib/floor/floor-grid";
+import { PageHeaderActions } from "@/components/layout/page-header-actions";
 import { cn } from "@/lib/utils";
-import { Eye, Plus, Trash2, X } from "lucide-react";
+import { Eye, Pencil, Plus, Trash2, X } from "lucide-react";
 
 export function FloorPlanEditor({
   initialSnapshot,
@@ -69,6 +62,8 @@ export function FloorPlanEditor({
   const [selectedTableId, setSelectedTableId] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
   const [areaDialogOpen, setAreaDialogOpen] = useState(false);
+  const [renameAreaOpen, setRenameAreaOpen] = useState(false);
+  const [renameAreaName, setRenameAreaName] = useState("");
   const [tableDialogOpen, setTableDialogOpen] = useState(false);
   const router = useRouter();
 
@@ -85,6 +80,33 @@ export function FloorPlanEditor({
     () => snapshot.tables.filter((table) => table.floorAreaId === activeAreaId),
     [snapshot.tables, activeAreaId],
   );
+
+  const activeArea = areas.find((area) => area.id === activeAreaId);
+
+  function applyAreaOrder(orderedAreaIds: string[]) {
+    const orderMap = new Map(
+      orderedAreaIds.map((id, index) => [id, index + 1]),
+    );
+    setSnapshot((current) => ({
+      ...current,
+      areas: current.areas.map((area) => ({
+        ...area,
+        sortOrder: orderMap.get(area.id) ?? area.sortOrder,
+      })),
+    }));
+    startTransition(async () => {
+      const result = await reorderFloorAreasAction({
+        restaurantId,
+        orderedAreaIds,
+      });
+      if (result.error) {
+        toast.error(result.error);
+        router.refresh();
+        return;
+      }
+      router.refresh();
+    });
+  }
 
   const selectedTable =
     snapshot.tables.find((table) => table.id === selectedTableId) ?? null;
@@ -106,14 +128,12 @@ export function FloorPlanEditor({
     }));
   }
 
-  function runAction(promise: Promise<FloorActionState>, successMessage: string) {
+  function runAction(promise: Promise<FloorActionState>) {
     startTransition(async () => {
       const result = await promise;
       if (result.error) {
         toast.error(result.error);
-        return;
       }
-      toast.success(successMessage);
     });
   }
 
@@ -211,191 +231,237 @@ export function FloorPlanEditor({
         floorAreaId: selectedTable.floorAreaId,
         isActive: selectedTable.isActive,
       }),
-      "Mesa actualizada",
     );
   }
 
   return (
     <div className={cn("relative flex min-h-0 flex-1 flex-col gap-3", className)}>
-      <Tabs
-        value={activeAreaId}
-        onValueChange={(value) => {
-          setActiveAreaId(value);
+      <PageHeaderActions>
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          <ArcLinkButton href="/floor" variant="secondary" size="sm">
+            <Eye className="size-4" />
+            Ver salón
+          </ArcLinkButton>
+          <Dialog open={areaDialogOpen} onOpenChange={setAreaDialogOpen}>
+            <DialogTrigger asChild>
+              <Button variant="secondary" size="sm">
+                <Plus className="size-4" />
+                Área
+              </Button>
+            </DialogTrigger>
+            <DialogContent title="Nueva área">
+              <form
+                className="flex flex-col gap-4"
+                action={async (formData) => {
+                  formData.set("restaurantId", restaurantId);
+                  const result = await createFloorAreaAction({}, formData);
+                  if (result.error) {
+                    toast.error(result.error);
+                    return;
+                  }
+                  if (result.area) {
+                    setSnapshot((current) => ({
+                      ...current,
+                      areas: [...current.areas, result.area as FloorArea],
+                    }));
+                    setActiveAreaId(result.area.id);
+                  }
+                  setAreaDialogOpen(false);
+                  router.refresh();
+                }}
+              >
+                <Input id="area-name" name="name" label="Nombre" required />
+                <div className="flex justify-end">
+                  <Button type="submit" variant="primary">
+                    Crear área
+                  </Button>
+                </div>
+              </form>
+            </DialogContent>
+          </Dialog>
+
+          <Dialog open={tableDialogOpen} onOpenChange={setTableDialogOpen}>
+            <DialogTrigger asChild>
+              <Button variant="secondary" size="sm">
+                <Plus className="size-4" />
+                Mesa
+              </Button>
+            </DialogTrigger>
+            <DialogContent title="Nueva mesa">
+              <form
+                className="flex flex-col gap-4"
+                onSubmit={async (event) => {
+                  event.preventDefault();
+                  const formData = new FormData(event.currentTarget);
+                  formData.set("restaurantId", restaurantId);
+                  formData.set("floorAreaId", activeAreaId);
+                  formData.set("shape", "square");
+                  const result = await createTableAction({}, formData);
+                  if (result.error) {
+                    toast.error(result.error);
+                    return;
+                  }
+                  if (result.table) {
+                    setSnapshot((current) => ({
+                      ...current,
+                      tables: [...current.tables, result.table as RestaurantTable],
+                    }));
+                    setSelectedTableId(result.table.id);
+                  }
+                  setTableDialogOpen(false);
+                  router.refresh();
+                }}
+              >
+                <Input
+                  id="table-label"
+                  name="label"
+                  label="Nombre / número"
+                  required
+                />
+                <Input
+                  id="table-capacity"
+                  name="capacity"
+                  label="Capacidad"
+                  type="number"
+                  min={1}
+                  max={30}
+                  defaultValue={4}
+                  required
+                />
+                <div className="flex justify-end">
+                  <Button type="submit" variant="primary">
+                    Crear mesa
+                  </Button>
+                </div>
+              </form>
+            </DialogContent>
+          </Dialog>
+
+          <Dialog
+            open={renameAreaOpen}
+            onOpenChange={(open) => {
+              setRenameAreaOpen(open);
+              if (open && activeArea) setRenameAreaName(activeArea.name);
+            }}
+          >
+            <DialogTrigger asChild>
+              <Button
+                variant="secondary"
+                size="sm"
+                disabled={!activeAreaId}
+              >
+                <Pencil className="size-4" />
+                Renombrar zona
+              </Button>
+            </DialogTrigger>
+            <DialogContent title="Renombrar zona" className="max-w-sm">
+              <div className="flex flex-col gap-4">
+                <Input
+                  id="rename-area-name"
+                  label="Nombre"
+                  value={renameAreaName}
+                  onChange={(event) => setRenameAreaName(event.target.value)}
+                  maxLength={80}
+                  autoFocus
+                />
+                <div className="flex flex-wrap justify-end gap-2">
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    disabled={pending}
+                    onClick={() => setRenameAreaOpen(false)}
+                  >
+                    Cancelar
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="primary"
+                    loading={pending}
+                    disabled={!renameAreaName.trim()}
+                    onClick={() =>
+                      startTransition(async () => {
+                        const name = renameAreaName.trim();
+                        const result = await renameFloorAreaAction({
+                          id: activeAreaId,
+                          restaurantId,
+                          name,
+                        });
+                        if (result.error) {
+                          toast.error(result.error);
+                          return;
+                        }
+                        setSnapshot((current) => ({
+                          ...current,
+                          areas: current.areas.map((area) =>
+                            area.id === activeAreaId ? { ...area, name } : area,
+                          ),
+                        }));
+                        setRenameAreaOpen(false);
+                        router.refresh();
+                      })
+                    }
+                  >
+                    Guardar
+                  </Button>
+                </div>
+              </div>
+            </DialogContent>
+          </Dialog>
+
+          <Button
+            variant="secondary"
+            size="sm"
+            disabled={pending || !activeAreaId}
+            loading={pending}
+            onClick={() =>
+              runAction(
+                deleteFloorAreaAction({
+                  id: activeAreaId,
+                  restaurantId,
+                }).then((result) => {
+                  if (!result.error) {
+                    setSelectedTableId(null);
+                    router.refresh();
+                  }
+                  return result;
+                }),
+              )
+            }
+          >
+            <Trash2 className="size-4" />
+            Eliminar área
+          </Button>
+        </div>
+      </PageHeaderActions>
+
+      <FloorZonePills
+        areas={areas}
+        activeAreaId={activeAreaId}
+        onSelect={(areaId) => {
+          setActiveAreaId(areaId);
           setSelectedTableId(null);
         }}
-        className="flex min-h-0 flex-1 flex-col gap-3"
-      >
-        <div className="flex shrink-0 flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
-          <TabsList className="h-auto w-full justify-start lg:w-auto">
-            {areas.map((area) => (
-              <TabsTrigger key={area.id} value={area.id}>
-                {area.name}
-              </TabsTrigger>
-            ))}
-          </TabsList>
-          <div className="flex flex-wrap gap-2">
-            <Button asChild variant="outline" size="sm">
-              <Link href="/floor">
-                <Eye className="size-4" />
-                Ver salón
-              </Link>
-            </Button>
-            <Dialog open={areaDialogOpen} onOpenChange={setAreaDialogOpen}>
-              <DialogTrigger asChild>
-                <Button variant="outline" size="sm">
-                  <Plus className="size-4" />
-                  Área
-                </Button>
-              </DialogTrigger>
-              <DialogContent>
-                <form
-                  action={async (formData) => {
-                    formData.set("restaurantId", restaurantId);
-                    const result = await createFloorAreaAction({}, formData);
-                    if (result.error) {
-                      toast.error(result.error);
-                      return;
-                    }
-                    if (result.area) {
-                      setSnapshot((current) => ({
-                        ...current,
-                        areas: [...current.areas, result.area as FloorArea],
-                      }));
-                      setActiveAreaId(result.area.id);
-                    }
-                    toast.success("Área creada");
-                    setAreaDialogOpen(false);
-                    router.refresh();
-                  }}
-                >
-                  <DialogHeader>
-                    <DialogTitle>Nueva área</DialogTitle>
-                  </DialogHeader>
-                  <div className="space-y-3 py-2">
-                    <Label htmlFor="area-name">Nombre</Label>
-                    <Input id="area-name" name="name" required />
-                  </div>
-                  <DialogFooter>
-                    <Button type="submit" variant="outline">
-                      Crear área
-                    </Button>
-                  </DialogFooter>
-                </form>
-              </DialogContent>
-            </Dialog>
+        reorderable
+        onReorder={applyAreaOrder}
+      />
 
-            <Dialog open={tableDialogOpen} onOpenChange={setTableDialogOpen}>
-              <DialogTrigger asChild>
-                <Button variant="outline" size="sm">
-                  <Plus className="size-4" />
-                  Mesa
-                </Button>
-              </DialogTrigger>
-              <DialogContent>
-                <form
-                  onSubmit={async (event) => {
-                    event.preventDefault();
-                    const formData = new FormData(event.currentTarget);
-                    formData.set("restaurantId", restaurantId);
-                    formData.set("floorAreaId", activeAreaId);
-                    formData.set("shape", "square");
-                    const result = await createTableAction({}, formData);
-                    if (result.error) {
-                      toast.error(result.error);
-                      return;
-                    }
-                    if (result.table) {
-                      setSnapshot((current) => ({
-                        ...current,
-                        tables: [...current.tables, result.table as RestaurantTable],
-                      }));
-                      setSelectedTableId(result.table.id);
-                    }
-                    toast.success("Mesa creada");
-                    setTableDialogOpen(false);
-                    router.refresh();
-                  }}
-                >
-                  <DialogHeader>
-                    <DialogTitle>Nueva mesa</DialogTitle>
-                  </DialogHeader>
-                  <div className="grid gap-3 py-2">
-                    <div className="space-y-2">
-                      <Label htmlFor="table-label">Nombre / número</Label>
-                      <Input id="table-label" name="label" required />
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="table-capacity">Capacidad</Label>
-                      <Input
-                        id="table-capacity"
-                        name="capacity"
-                        type="number"
-                        min={1}
-                        max={30}
-                        defaultValue={4}
-                        required
-                      />
-                    </div>
-                  </div>
-                  <DialogFooter>
-                    <Button type="submit" variant="outline">
-                      Crear mesa
-                    </Button>
-                  </DialogFooter>
-                </form>
-              </DialogContent>
-            </Dialog>
-
-            <Button
-              variant="outline"
-              size="sm"
-              disabled={pending || !activeAreaId}
-              onClick={() =>
-                runAction(
-                  deleteFloorAreaAction({
-                    id: activeAreaId,
-                    restaurantId,
-                  }).then((result) => {
-                    if (!result.error) {
-                      setSelectedTableId(null);
-                      router.refresh();
-                    }
-                    return result;
-                  }),
-                  "Área eliminada",
-                )
-              }
-            >
-              <Trash2 className="size-4" />
-              Eliminar área
-            </Button>
-          </div>
-        </div>
-
-        {areas.map((area) => (
-          <TabsContent
-            key={area.id}
-            value={area.id}
-            className="mt-0 flex min-h-0 flex-1 flex-col data-[state=inactive]:hidden"
-          >
-            <FloorGridView
-              tables={tablesForArea}
-              selectedTableId={selectedTableId}
-              onSelect={(table) => setSelectedTableId(table.id)}
-              editable
-              allowInactive
-              onEmptySlotClick={handleEmptySlotClick}
-              onDropToCell={handleDropToCell}
-              emptyLabel="Agrega una mesa para empezar a armar el plano."
-              className="min-h-[min(70vh,calc(100dvh-12rem))]"
-            />
-            <p className="mt-2 shrink-0 text-xs text-muted-foreground">
-              Arrastra una mesa a una casilla vacía o sobre otra mesa para
-              intercambiar. También puedes seleccionar y tocar una casilla.
-            </p>
-          </TabsContent>
-        ))}
-      </Tabs>
+      <div className="flex min-h-0 flex-1 flex-col">
+        <FloorGridView
+          tables={tablesForArea}
+          selectedTableId={selectedTableId}
+          onSelect={(table) => setSelectedTableId(table.id)}
+          editable
+          allowInactive
+          onEmptySlotClick={handleEmptySlotClick}
+          onDropToCell={handleDropToCell}
+          emptyLabel="Agrega una mesa para empezar a armar el plano."
+          className="min-h-[min(70vh,calc(100dvh-12rem))]"
+        />
+        <p className="mt-2 shrink-0 text-xs text-muted-foreground">
+          Arrastra una mesa a una casilla vacía o sobre otra mesa para
+          intercambiar. También puedes seleccionar y tocar una casilla.
+        </p>
+      </div>
 
       <aside
         className={cn(
@@ -415,7 +481,7 @@ export function FloorPlanEditor({
               <Button
                 type="button"
                 variant="ghost"
-                size="icon-sm"
+                size="sm"
                 onClick={() => setSelectedTableId(null)}
                 aria-label="Cerrar propiedades"
               >
@@ -423,64 +489,52 @@ export function FloorPlanEditor({
               </Button>
             </div>
 
-            <div className="space-y-4">
+            <div className="flex flex-col gap-4">
               <TableStatusBadge status={selectedTable.status} />
-              <div className="space-y-2">
-                <Label htmlFor="edit-label">Etiqueta</Label>
-                <Input
-                  id="edit-label"
-                  value={selectedTable.label}
-                  onChange={(event) =>
-                    updateLocalTable({
-                      ...selectedTable,
-                      label: event.target.value,
-                    })
-                  }
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="edit-capacity">Capacidad</Label>
-                <Input
-                  id="edit-capacity"
-                  type="number"
-                  min={1}
-                  max={30}
-                  value={selectedTable.capacity}
-                  onChange={(event) =>
-                    updateLocalTable({
-                      ...selectedTable,
-                      capacity: Number(event.target.value),
-                    })
-                  }
-                />
-              </div>
-              <div className="space-y-2">
-                <Label>Estado</Label>
-                <Select
-                  value={getSalonMeta(selectedTable.status).tableStatus}
-                  onValueChange={(value) =>
-                    updateLocalTable({
-                      ...selectedTable,
-                      status: value as RestaurantTable["status"],
-                    })
-                  }
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {SALON_EDITABLE_STATUSES.map((status) => (
-                      <SelectItem key={status} value={status}>
-                        {getSalonMeta(status).label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="flex items-center justify-between">
-                <Label htmlFor="edit-active">Activa</Label>
+              <Input
+                id="edit-label"
+                label="Etiqueta"
+                value={selectedTable.label}
+                onChange={(event) =>
+                  updateLocalTable({
+                    ...selectedTable,
+                    label: event.target.value,
+                  })
+                }
+              />
+              <Input
+                id="edit-capacity"
+                label="Capacidad"
+                type="number"
+                min={1}
+                max={30}
+                value={selectedTable.capacity}
+                onChange={(event) =>
+                  updateLocalTable({
+                    ...selectedTable,
+                    capacity: Number(event.target.value),
+                  })
+                }
+              />
+              <Select
+                label="Estado"
+                value={getSalonMeta(selectedTable.status).tableStatus}
+                onValueChange={(value) =>
+                  updateLocalTable({
+                    ...selectedTable,
+                    status: value as RestaurantTable["status"],
+                  })
+                }
+                options={SALON_EDITABLE_STATUSES.map((status) => ({
+                  value: status,
+                  label: getSalonMeta(status).label,
+                }))}
+              />
+              <div className="flex items-center justify-between gap-3">
+                <span className="text-sm text-foreground">Activa</span>
                 <Switch
                   id="edit-active"
+                  aria-label="Activa"
                   checked={selectedTable.isActive}
                   onCheckedChange={(checked) =>
                     updateLocalTable({
@@ -492,15 +546,15 @@ export function FloorPlanEditor({
               </div>
               <div className="flex flex-col gap-2">
                 <Button
-                  variant="outline"
-                  disabled={pending}
+                  variant="secondary"
+                  loading={pending}
                   onClick={handlePropertySave}
                 >
                   Guardar propiedades
                 </Button>
                 <Button
-                  variant="destructive"
-                  disabled={pending}
+                  variant="danger"
+                  loading={pending}
                   onClick={() =>
                     runAction(
                       deleteTableAction({
@@ -513,7 +567,6 @@ export function FloorPlanEditor({
                         }
                         return result;
                       }),
-                      "Mesa eliminada",
                     )
                   }
                 >

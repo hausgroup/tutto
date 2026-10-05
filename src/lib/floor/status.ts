@@ -63,9 +63,8 @@ export const SALON_STATE_META: Record<
     /** Internal status written when editing from the salon UI. */
     tableStatus: TableStatus;
     icon: LucideIcon;
-    /** Tailwind classes for chairs + accent bar. */
+    /** Tailwind classes for chair indicators. */
     accentClass: string;
-    barClass: string;
     badgeClass: string;
   }
 > = {
@@ -76,7 +75,6 @@ export const SALON_STATE_META: Record<
     icon: CircleDot,
     // Mint pastel
     accentClass: "bg-[#A8E0CB] dark:bg-[#6FCBB0]",
-    barClass: "bg-[#A8E0CB] dark:bg-[#6FCBB0]",
     badgeClass:
       "border-[#A8E0CB]/60 text-[#3F8F74] dark:border-[#6FCBB0]/45 dark:text-[#A8E0CB]",
   },
@@ -87,7 +85,6 @@ export const SALON_STATE_META: Record<
     icon: CircleCheck,
     // Soft greyish yellow
     accentClass: "bg-[#E4DDB0] dark:bg-[#C5B87E]",
-    barClass: "bg-[#E4DDB0] dark:bg-[#C5B87E]",
     badgeClass:
       "border-[#E4DDB0]/70 text-[#8A8050] dark:border-[#C5B87E]/45 dark:text-[#E4DDB0]",
   },
@@ -98,7 +95,6 @@ export const SALON_STATE_META: Record<
     icon: Utensils,
     // Pastel pink / soft rose
     accentClass: "bg-[#F0B6C1] dark:bg-[#E48A9A]",
-    barClass: "bg-[#F0B6C1] dark:bg-[#E48A9A]",
     badgeClass:
       "border-[#F0B6C1]/70 text-[#B85F70] dark:border-[#E48A9A]/45 dark:text-[#F0B6C1]",
   },

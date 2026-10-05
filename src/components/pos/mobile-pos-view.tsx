@@ -5,28 +5,27 @@ import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import {
   ArrowLeft,
-  Banknote,
   Coffee,
-  CreditCard,
   CupSoda,
   IceCream,
   Minus,
   Plus,
-  Printer,
-  Search,
+  Receipt,
   Soup,
   Trash2,
   UtensilsCrossed,
-  Wallet,
   type LucideIcon,
 } from "lucide-react";
+import { Button } from "@/components/arc/button/button";
 import type { CatalogSnapshot, Product } from "@/lib/catalog/types";
 import type { DrinkServeTiming, Order, OrderItem } from "@/lib/orders/types";
-import type { TableReservation } from "@/lib/floor/types";
+import type { RestaurantTable, TableReservation } from "@/lib/floor/types";
+import { TableReservationDialog } from "@/components/floor/table-reservation-dialog";
+import { PosTableReservationIndicator } from "@/components/pos/pos-table-reservation-indicator";
 import {
   adjustOrderProductQuantityAction,
   moveBarDrinkUnitToWithMealAction,
-  payOrderAction,
+  removeOrderLineAction,
   sendOrderAction,
 } from "@/lib/orders/actions";
 import { printStationTicketsAction } from "@/lib/printing/actions";
@@ -34,7 +33,8 @@ import { printStationTicketPdfs } from "@/lib/printing/browser-print";
 import {
   applyOptimisticMoveBarUnitToWithMeal,
   applyOptimisticQuantityDelta,
-  mergeServerOrderItems,
+  applyOptimisticRemoveOrderLine,
+  reconcileOrderAfterServer,
 } from "@/lib/orders/optimistic";
 import { orderHasPendingBarDrinks } from "@/lib/orders/bar-delivery";
 import {
@@ -46,7 +46,16 @@ import {
 } from "@/lib/orders/drink-serve";
 import { consolidateWithMealOrderLines } from "@/lib/orders/consolidate-lines";
 import { DrinkServeSheet } from "@/components/pos/drink-serve-sheet";
-import { PosTableHeaderMenu } from "@/components/pos/pos-table-header-menu";
+import { PosCheckoutDialog } from "@/components/pos/pos-checkout-dialog";
+import { TableSessionPreviewDialog } from "@/components/pos/table-session-preview-dialog";
+import {
+  draftTicketTotals,
+  filterDraftItems,
+  groupUnpaidSentItemsBySend,
+  orderHasSentBill,
+  orderHasAnyActiveItems,
+  unpaidSentBillTotals,
+} from "@/lib/orders/bill-segments";
 import { calculateLineItem } from "@/lib/orders/calculate";
 import {
   clearCachedPosBoot,
@@ -61,34 +70,10 @@ import {
 import { formatCurrency } from "@/lib/utils/money";
 import { cn } from "@/lib/utils";
 
-// #region agent log
-function posDebugLog(
-  message: string,
-  data: Record<string, unknown>,
-  hypothesisId: string,
-) {
-  fetch("http://127.0.0.1:7657/ingest/9c21ec7a-f83c-47b2-a116-b9a5d72f1fd1", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "X-Debug-Session-Id": "af00c9",
-    },
-    body: JSON.stringify({
-      sessionId: "af00c9",
-      location: "mobile-pos-view.tsx",
-      message,
-      data,
-      timestamp: Date.now(),
-      hypothesisId,
-    }),
-  }).catch(() => {});
-}
-// #endregion
-
-function totalProductQty(order: Order, productId: string): number {
+function draftProductQty(order: Order, productId: string): number {
   let sum = 0;
   for (const item of order.items) {
-    if (item.productId !== productId || item.status === "cancelled") continue;
+    if (item.productId !== productId || item.status !== "pending") continue;
     sum += item.quantity;
   }
   return sum;
@@ -153,10 +138,40 @@ export function MobilePosView({
 }) {
   const router = useRouter();
   const [order, setOrder] = useState(initialOrder);
-  const [paymentMethod, setPaymentMethod] = useState("cash");
-  const [query, setQuery] = useState("");
+  const [sessionPreviewOpen, setSessionPreviewOpen] = useState(false);
+  const [checkoutOpen, setCheckoutOpen] = useState(false);
+  const [reserveDialogOpen, setReserveDialogOpen] = useState(false);
+  const [activeReservation, setActiveReservation] = useState(
+    tableReservation ?? null,
+  );
   const [checkoutPending, startTransition] = useTransition();
+
+  useEffect(() => {
+    setActiveReservation(tableReservation ?? null);
+  }, [tableReservation]);
+
+  const tableForReserve = useMemo((): RestaurantTable | null => {
+    if (!order.tableId) return null;
+    return {
+      id: order.tableId,
+      restaurantId: order.restaurantId,
+      floorAreaId: "",
+      label: tableLabel,
+      capacity: 4,
+      status: activeReservation ? "reserved" : "available",
+      posX: 0,
+      posY: 0,
+      width: 96,
+      height: 96,
+      rotationDeg: 0,
+      shape: "square",
+      isActive: true,
+      reservation: activeReservation,
+    };
+  }, [order.tableId, order.restaurantId, tableLabel, activeReservation]);
   const syncQueue = useRef(Promise.resolve());
+  /** Bumped on ticket edits that must ignore stale in-flight server snapshots. */
+  const posSyncEpoch = useRef(0);
   const pendingDeltas = useRef<
     { productId: string; delta: number; serveTiming?: DrinkServeTiming }[]
   >([]);
@@ -166,6 +181,11 @@ export function MobilePosView({
       { productId: string; delta: number; serveTiming?: DrinkServeTiming }
     >(),
   );
+  const pendingMealMoves = useRef<
+    { productId: string; itemId: string }[]
+  >([]);
+  /** While a ticket line delete is in flight, ignore server rows for that product. */
+  const productsPendingLineRemoval = useRef(new Set<string>());
   const lastBarServeTiming = useRef<Record<string, DrinkServeTiming>>({});
   const [drinkSheetOpen, setDrinkSheetOpen] = useState(false);
   const [drinkPickProduct, setDrinkPickProduct] = useState<Product | null>(
@@ -179,8 +199,13 @@ export function MobilePosView({
   catalogRef.current = catalog;
   const wasOpening = useRef(opening);
   const ticketClosed = order.status === "completed";
-  const hasBill = order.items.some(
-    (item) => item.status !== "cancelled" && item.quantity > 0,
+  const hasSentBill = orderHasSentBill(order);
+  const hasActiveItems = orderHasAnyActiveItems(order);
+  const sessionBill = useMemo(() => unpaidSentBillTotals(order), [order]);
+  const draftTotals = useMemo(() => draftTicketTotals(order), [order]);
+  const sessionBatches = useMemo(
+    () => groupUnpaidSentItemsBySend(order.items),
+    [order.items],
   );
 
   function serverAdjustKey(
@@ -211,25 +236,103 @@ export function MobilePosView({
     }
   }
 
+  function pendingAdjustsSnapshot() {
+    return [...pendingServerAdjusts.current.values()].filter(
+      (entry) =>
+        !productsPendingLineRemoval.current.has(entry.productId),
+    );
+  }
+
+  function clearPendingServerAdjustsForProduct(productId: string) {
+    for (const key of pendingServerAdjusts.current.keys()) {
+      if (key.startsWith(`${productId}|`)) {
+        pendingServerAdjusts.current.delete(key);
+      }
+    }
+  }
+
+  function invalidatePosSync() {
+    posSyncEpoch.current += 1;
+  }
+
+  function enqueuePendingMealMove(productId: string, itemId: string) {
+    pendingMealMoves.current.push({ productId, itemId });
+  }
+
+  function pendingMealMovesSnapshot() {
+    const counts = new Map<string, number>();
+    for (const job of pendingMealMoves.current) {
+      counts.set(job.productId, (counts.get(job.productId) ?? 0) + 1);
+    }
+    return [...counts.entries()].map(([productId, count]) => ({
+      productId,
+      count,
+    }));
+  }
+
+  function applyServerOrder(server: Order): Order {
+    const pending = pendingAdjustsSnapshot();
+    const serverBase =
+      productsPendingLineRemoval.current.size === 0
+        ? server
+        : {
+            ...server,
+            items: server.items.filter(
+              (line) =>
+                !productsPendingLineRemoval.current.has(line.productId),
+            ),
+          };
+    const next = reconcileOrderAfterServer(
+      serverBase,
+      catalogRef.current,
+      pending,
+      pendingMealMovesSnapshot(),
+    );
+    setOrder(next);
+    return next;
+  }
+
+  function flushPendingMealMoves() {
+    syncQueue.current = syncQueue.current
+      .then(async () => {
+        while (pendingMealMoves.current.length > 0) {
+          const job = pendingMealMoves.current[0]!;
+
+          const result = await moveBarDrinkUnitToWithMealAction({
+            orderId: orderRef.current.id,
+            itemId: job.itemId,
+            productId: job.productId,
+          });
+          if (result.error) {
+            toast.error(result.error);
+            return;
+          }
+          pendingMealMoves.current.shift();
+          if (result.order) {
+            applyServerOrder(result.order);
+          }
+        }
+      })
+      .catch(() => {
+        toast.error("No se pudo mover la bebida.");
+      });
+  }
+
   function flushPendingServerAdjusts() {
     syncQueue.current = syncQueue.current
       .then(async () => {
         while (pendingServerAdjusts.current.size > 0) {
+          const epochAtBatch = posSyncEpoch.current;
           const batch = new Map(pendingServerAdjusts.current);
           pendingServerAdjusts.current.clear();
           for (const entry of batch.values()) {
             if (entry.delta === 0) continue;
-            // #region agent log
-            posDebugLog(
-              "server adjust flush",
-              {
-                productId: entry.productId.slice(0, 8),
-                delta: entry.delta,
-                serveTiming: entry.serveTiming ?? null,
-              },
-              "H2",
-            );
-            // #endregion
+            if (productsPendingLineRemoval.current.has(entry.productId)) {
+              continue;
+            }
+            if (epochAtBatch !== posSyncEpoch.current) {
+              continue;
+            }
             const result = await adjustOrderProductQuantityAction({
               orderId: orderRef.current.id,
               productId: entry.productId,
@@ -237,13 +340,6 @@ export function MobilePosView({
               serveTiming: entry.serveTiming,
             });
             if (result.error) {
-              // #region agent log
-              posDebugLog(
-                "server adjust error",
-                { error: result.error },
-                "H6",
-              );
-              // #endregion
               toast.error(result.error);
               mergePendingServerAdjust(
                 entry.productId,
@@ -252,21 +348,8 @@ export function MobilePosView({
               );
               continue;
             }
-            if (result.order) {
-              const serverQty = totalProductQty(result.order, entry.productId);
-              // #region agent log
-              posDebugLog(
-                "server adjust ok",
-                {
-                  productId: entry.productId.slice(0, 8),
-                  serverQty,
-                },
-                "H3",
-              );
-              // #endregion
-              setOrder((current) =>
-                mergeServerOrderItems(current, result.order!),
-              );
+            if (result.order && epochAtBatch === posSyncEpoch.current) {
+              applyServerOrder(result.order);
             }
           }
         }
@@ -289,21 +372,21 @@ export function MobilePosView({
     if (opening || !order.tableId || order.id.startsWith("opening-")) return;
     const timer = window.setTimeout(() => {
       setCachedPosOrder(order.tableId!, order);
-      const bill = order.items.some(
-        (item) => item.status !== "cancelled" && item.quantity > 0,
-      );
       patchCachedFloorTableStatus(
         order.tableId!,
-        bill ? "occupied" : "available",
+        hasSentBill ? "occupied" : "available",
       );
-      patchCachedFloorBillTotal(order.tableId!, bill ? order.totalMinor : 0);
+      patchCachedFloorBillTotal(
+        order.tableId!,
+        hasSentBill ? sessionBill.totalMinor : 0,
+      );
       patchCachedFloorPendingBarDrinks(
         order.tableId!,
-        bill && orderHasPendingBarDrinks(order),
+        hasSentBill && orderHasPendingBarDrinks(order),
       );
     }, 200);
     return () => window.clearTimeout(timer);
-  }, [order, opening]);
+  }, [order, opening, hasSentBill, sessionBill.totalMinor]);
 
   const categories = useMemo(
     () =>
@@ -347,6 +430,7 @@ export function MobilePosView({
     for (const { productId, delta, serveTiming } of queued) {
       enqueueServerAdjust(productId, delta, serveTiming);
     }
+    flushPendingMealMoves();
   }, [opening, initialOrder]);
 
   useEffect(() => {
@@ -358,21 +442,19 @@ export function MobilePosView({
   const qtyByProduct = useMemo(() => {
     const map = new Map<string, number>();
     for (const item of order.items) {
-      if (item.status === "cancelled") continue;
+      if (item.status !== "pending") continue;
       map.set(item.productId, (map.get(item.productId) ?? 0) + item.quantity);
     }
     return map;
   }, [order.items]);
 
   const products = useMemo(() => {
-    const q = query.trim().toLowerCase();
     return catalog.products.filter((p) => {
       if (!p.isActive) return false;
       if (activeCategoryId && p.categoryId !== activeCategoryId) return false;
-      if (q && !p.name.toLowerCase().includes(q)) return false;
       return true;
     });
-  }, [catalog.products, activeCategoryId, query]);
+  }, [catalog.products, activeCategoryId]);
 
   const productById = useMemo(() => {
     const map = new Map<string, Product>();
@@ -382,27 +464,29 @@ export function MobilePosView({
     return map;
   }, [catalog.products]);
 
-  const pendingCount = order.items.filter((i) => i.status === "pending").length;
-  const hasTicketLines = order.items.some(
-    (i) => i.status !== "cancelled" && i.quantity > 0,
+  const draftItems = useMemo(
+    () => filterDraftItems(order.items),
+    [order.items],
   );
+  const hasDraftToSend = draftItems.length > 0;
   const canPrintTickets =
-    hasTicketLines &&
+    hasSentBill &&
     !opening &&
     !order.id.startsWith("opening-") &&
     order.status !== "completed";
   const attendant = shortName(attendantName);
   const ticketItemCount = order.items.reduce(
     (sum, item) =>
-      item.status === "cancelled" ? sum : sum + item.quantity,
+      item.status === "pending" ? sum + item.quantity : sum,
     0,
   );
+  const ticketTotals = hasDraftToSend ? draftTotals : sessionBill;
 
   const { serveNowItems, withMealItems } = useMemo(() => {
     const serveNow: OrderItem[] = [];
     const withMeal: OrderItem[] = [];
     for (const item of order.items) {
-      if (item.status === "cancelled" || item.quantity <= 0) continue;
+      if (item.status !== "pending" || item.quantity <= 0) continue;
       const product = productById.get(item.productId);
       if (isWithMealBarLine(item, product, catalog.categories)) {
         withMeal.push(item);
@@ -431,7 +515,7 @@ export function MobilePosView({
         ? lastBarServeTiming.current[productId]
         : undefined);
 
-    const qtyBefore = totalProductQty(orderRef.current, productId);
+    const qtyBefore = draftProductQty(orderRef.current, productId);
 
     const next = applyOptimisticQuantityDelta(
       orderRef.current,
@@ -440,47 +524,17 @@ export function MobilePosView({
       delta,
       resolvedTiming,
     );
+    const qtyAfter = draftProductQty(next, productId);
     const applied =
-      totalProductQty(next, productId) !== qtyBefore ||
+      qtyAfter !== qtyBefore ||
       (delta < 0 && next.items.length !== orderRef.current.items.length);
 
     if (!applied) {
-      // #region agent log
-      posDebugLog(
-        "adjust noop",
-        {
-          source,
-          productId: productId.slice(0, 8),
-          delta,
-          resolvedTiming: resolvedTiming ?? null,
-          qtyBefore,
-        },
-        "H4",
-      );
-      // #endregion
       return;
     }
 
+    orderRef.current = next;
     setOrder(next);
-
-    const qtyAfterLog = totalProductQty(next, productId);
-
-    // #region agent log
-    posDebugLog(
-      "adjust",
-      {
-        source,
-        productId: productId.slice(0, 8),
-        delta,
-        resolvedTiming: resolvedTiming ?? null,
-        qtyBefore,
-        qtyAfter: qtyAfterLog,
-        applied: true,
-        opening,
-      },
-      "H1",
-    );
-    // #endregion
 
     // Table ticket still opening — queue deltas until the real order id exists.
     if (opening || orderRef.current.id.startsWith("opening-")) {
@@ -521,14 +575,86 @@ export function MobilePosView({
     setDrinkPickProduct(null);
   }
 
+  function serveTimingForLine(item: OrderItem): DrinkServeTiming | undefined {
+    if (item.serveTiming === "with_meal") return "with_meal";
+    if (item.serveTiming === "immediate") return "immediate";
+    const product = productById.get(item.productId);
+    if (product && catalogProductIsPosBarDrink(product, catalog.categories)) {
+      return "immediate";
+    }
+    return undefined;
+  }
+
   function removeLine(item: OrderItem) {
     if (!canRemoveLineFromPosTicket(item)) return;
-    adjust(
-      item.productId,
-      -item.quantity,
-      item.serveTiming ?? undefined,
-      "line-remove",
-    );
+
+    invalidatePosSync();
+    const next = applyOptimisticRemoveOrderLine(orderRef.current, item.id);
+    if (next.items.length >= orderRef.current.items.length) return;
+
+    clearPendingServerAdjustsForProduct(item.productId);
+    orderRef.current = next;
+    setOrder(next);
+    if (next.tableId) {
+      patchCachedFloorPendingBarDrinks(
+        next.tableId,
+        orderHasPendingBarDrinks(next),
+      );
+    }
+
+    const timing = serveTimingForLine(item);
+    const optimisticOnly = item.id.startsWith("optimistic-");
+
+    if (opening || orderRef.current.id.startsWith("opening-")) {
+      const last = pendingDeltas.current.at(-1);
+      if (
+        last &&
+        last.productId === item.productId &&
+        last.serveTiming === timing
+      ) {
+        last.delta -= item.quantity;
+      } else {
+        pendingDeltas.current.push({
+          productId: item.productId,
+          delta: -item.quantity,
+          serveTiming: timing,
+        });
+      }
+      return;
+    }
+
+    if (optimisticOnly) {
+      return;
+    }
+
+    productsPendingLineRemoval.current.add(item.productId);
+    syncQueue.current = syncQueue.current
+      .then(async () => {
+        const result = await removeOrderLineAction({
+          orderId: orderRef.current.id,
+          itemId: item.id,
+        });
+        if (result.error) {
+          productsPendingLineRemoval.current.delete(item.productId);
+          toast.error(result.error);
+          return;
+        }
+        if (result.order) {
+          const synced = applyServerOrder(result.order);
+          productsPendingLineRemoval.current.delete(item.productId);
+          if (orderRef.current.tableId) {
+            setCachedPosOrder(orderRef.current.tableId, synced);
+            patchCachedFloorPendingBarDrinks(
+              result.order.tableId!,
+              orderHasPendingBarDrinks(synced),
+            );
+          }
+        }
+      })
+      .catch(() => {
+        productsPendingLineRemoval.current.delete(item.productId);
+        toast.error("No se pudo eliminar la línea.");
+      });
   }
 
   function moveOneBarUnitToWithMeal(item: OrderItem) {
@@ -541,9 +667,16 @@ export function MobilePosView({
     }
 
     setOrder((current) => {
+      const source = current.items.find((line) => line.id === item.id);
+      if (
+        !source ||
+        !canMoveBarUnitToWithMeal(source, product, catalog.categories)
+      ) {
+        return current;
+      }
       const next = applyOptimisticMoveBarUnitToWithMeal(
         current,
-        item.id,
+        source.id,
         catalog,
       );
       if (next.tableId) {
@@ -555,33 +688,13 @@ export function MobilePosView({
       return next;
     });
 
+    enqueuePendingMealMove(item.productId, item.id);
+
     if (opening || orderRef.current.id.startsWith("opening-")) {
       return;
     }
 
-    startTransition(async () => {
-      await syncQueue.current;
-      const result = await moveBarDrinkUnitToWithMealAction({
-        orderId: orderRef.current.id,
-        itemId: item.id,
-        productId: item.productId,
-      });
-      if (result.error) {
-        toast.error(result.error);
-        router.refresh();
-        return;
-      }
-      if (result.order) {
-        setOrder(result.order);
-        if (orderRef.current.tableId) {
-          setCachedPosOrder(orderRef.current.tableId, result.order);
-          patchCachedFloorPendingBarDrinks(
-            result.order.tableId!,
-            orderHasPendingBarDrinks(result.order),
-          );
-        }
-      }
-    });
+    flushPendingMealMoves();
   }
 
   function renderOrderLine(item: OrderItem, section: "main" | "withMeal") {
@@ -656,29 +769,28 @@ export function MobilePosView({
     );
   }
 
-  async function runPrintOrderTickets(reprint: boolean) {
-    const printResult = await printStationTicketsAction({
-      orderId: orderRef.current.id,
-      reprint,
-    });
-    if (printResult.error) {
-      toast.error(printResult.error);
+  async function runPrintOrderTickets(
+    reprint: boolean,
+    itemIds?: string[],
+    printResult?: Awaited<ReturnType<typeof printStationTicketsAction>>,
+  ) {
+    const resolved =
+      printResult ??
+      (await printStationTicketsAction({
+        orderId: orderRef.current.id,
+        reprint,
+        itemIds,
+      }));
+    if (resolved.error) {
+      toast.error(resolved.error);
       return false;
     }
-    if (
-      !printResult.combinedPdfBase64 &&
-      !printResult.stationPdfs?.length
-    ) {
-      toast.message("Nada para imprimir");
+    if (!resolved.combinedPdfBase64 && !resolved.stationPdfs?.length) {
       return false;
     }
-    toast.message(reprint ? "Reimprimiendo tickets" : "Tickets listos", {
-      description:
-        "Elige impresora Cocina o Bar en cada diálogo de impresión.",
-    });
     await printStationTicketPdfs({
-      combinedPdfBase64: printResult.combinedPdfBase64,
-      stationPdfs: printResult.stationPdfs,
+      combinedPdfBase64: resolved.combinedPdfBase64,
+      stationPdfs: resolved.stationPdfs,
     });
     return true;
   }
@@ -697,58 +809,67 @@ export function MobilePosView({
     if (opening || order.id.startsWith("opening-")) return;
     startTransition(async () => {
       await syncQueue.current;
-      const result = await sendOrderAction(order.id);
+      const orderId = orderRef.current.id;
+      const itemIdsToPrint = orderRef.current.items
+        .filter((item) => item.status === "pending")
+        .map((item) => item.id);
+
+      const [result, printResult] = await Promise.all([
+        sendOrderAction(orderId),
+        itemIdsToPrint.length > 0
+          ? printStationTicketsAction({
+              orderId,
+              reprint: false,
+              itemIds: itemIdsToPrint,
+            })
+          : Promise.resolve({} as Awaited<
+              ReturnType<typeof printStationTicketsAction>
+            >),
+      ]);
+
       if (result.error) {
         toast.error(result.error);
         return;
       }
       if (result.order) setOrder(result.order);
+      setMobilePhase("menu");
       if (order.tableId) {
         const synced = result.order ?? order;
-        const total = synced.totalMinor;
-        const hasBill = synced.items.some(
-          (item) => item.status !== "cancelled" && item.quantity > 0,
-        );
+        const bill = orderHasSentBill(synced);
         patchCachedFloorTableStatus(
           order.tableId,
-          hasBill ? "occupied" : "available",
+          bill ? "occupied" : "available",
         );
-        patchCachedFloorBillTotal(order.tableId, hasBill ? total : 0);
+        patchCachedFloorBillTotal(
+          order.tableId,
+          bill ? synced.totalMinor : 0,
+        );
         patchCachedFloorPendingBarDrinks(
           order.tableId,
-          hasBill && orderHasPendingBarDrinks(synced),
+          bill && orderHasPendingBarDrinks(synced),
         );
       }
 
-      await runPrintOrderTickets(false);
-
-      toast.success("Pedido enviado");
+      if (itemIdsToPrint.length > 0) {
+        await runPrintOrderTickets(false, itemIdsToPrint, printResult);
+      }
     });
   }
 
-  function pay() {
+  function openCheckout() {
     if (opening || order.id.startsWith("opening-")) return;
-    startTransition(async () => {
-      await syncQueue.current;
-      const result = await payOrderAction({
-        orderId: order.id,
-        methodCode: paymentMethod,
-        amountMinor: order.totalMinor,
-      });
-      if (result.error) {
-        toast.error(result.error);
-        return;
-      }
-      if (order.tableId) {
-        clearCachedPosBoot(order.tableId);
-        patchCachedFloorTableStatus(order.tableId, "available");
-        patchCachedFloorBillTotal(order.tableId, 0);
-        patchCachedFloorPendingBarDrinks(order.tableId, false);
-      }
-      toast.success("Pago registrado");
-      void warmFloorBoot({ force: true });
-      router.push("/floor");
-    });
+    void syncQueue.current.then(() => setCheckoutOpen(true));
+  }
+
+  function handleCheckoutCompleted() {
+    if (order.tableId) {
+      clearCachedPosBoot(order.tableId);
+      patchCachedFloorTableStatus(order.tableId, "available");
+      patchCachedFloorBillTotal(order.tableId, 0);
+      patchCachedFloorPendingBarDrinks(order.tableId, false);
+    }
+    void warmFloorBoot({ force: true });
+    router.push("/floor");
   }
 
   function goToSalon() {
@@ -757,8 +878,8 @@ export function MobilePosView({
   }
 
   function primaryAction() {
-    if (pendingCount > 0) sendToKitchen();
-    else pay();
+    if (hasDraftToSend) sendToKitchen();
+    else if (sessionBill.totalMinor > 0) openCheckout();
   }
 
   // Prefetch salon while working a table.
@@ -776,27 +897,32 @@ export function MobilePosView({
         )}
       >
         <div className="flex min-h-0 flex-1 flex-col gap-5 overflow-y-auto p-4 md:p-6">
-        <div className="flex items-center gap-3">
-          <button
+        <div className="flex items-center gap-2">
+          <Button
             type="button"
+            variant="secondary"
+            size="sm"
             onClick={goToSalon}
-            className="inline-flex h-11 shrink-0 items-center gap-2 rounded-2xl bg-muted px-3.5 text-sm font-medium text-foreground ring-1 ring-border transition-colors hover:bg-muted/80"
+            aria-label="Volver al salón"
           >
             <ArrowLeft className="size-4" aria-hidden />
             Salón
-          </button>
-          <div className="relative min-w-0 flex-1">
-            <Search
-              className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground"
-              aria-hidden
-            />
-            <input
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              placeholder="Buscar"
-              className="h-11 w-full rounded-2xl border-0 bg-muted pr-4 pl-10 text-sm text-foreground outline-none ring-1 ring-border placeholder:text-muted-foreground focus:ring-ring"
-            />
-          </div>
+          </Button>
+          <div className="min-w-0 flex-1" />
+          {sessionBill.totalMinor > 0 ? (
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              onClick={() => setSessionPreviewOpen(true)}
+              aria-label={`Cuenta sin cobrar: ${formatCurrency(sessionBill.totalMinor)}`}
+            >
+              <Receipt className="size-4" aria-hidden />
+              <span className="tabular-nums">
+                {formatCurrency(sessionBill.totalMinor)}
+              </span>
+            </Button>
+          ) : null}
         </div>
 
         <section className="space-y-3">
@@ -955,8 +1081,11 @@ export function MobilePosView({
         </div>
 
         <div className="shrink-0 border-t border-border bg-background p-4 md:hidden">
-          <button
+          <Button
             type="button"
+            variant="primary"
+            size="lg"
+            className="h-auto w-full flex-col gap-0.5 py-3 font-semibold"
             disabled={
               opening ||
               ticketClosed ||
@@ -964,7 +1093,6 @@ export function MobilePosView({
               order.id.startsWith("opening-")
             }
             onClick={() => setMobilePhase("ticket")}
-            className="flex h-12 w-full flex-col items-center justify-center gap-0.5 rounded-2xl bg-foreground text-background transition-opacity disabled:opacity-40"
           >
             <span className="text-sm font-semibold">Continuar</span>
             <span className="text-[11px] font-normal opacity-90">
@@ -972,7 +1100,7 @@ export function MobilePosView({
               {ticketItemCount === 1 ? "producto" : "productos"} ·{" "}
               {formatCurrency(order.totalMinor)}
             </span>
-          </button>
+          </Button>
         </div>
       </div>
 
@@ -984,36 +1112,23 @@ export function MobilePosView({
             : "max-md:fixed max-md:inset-0 max-md:z-50 max-md:flex max-md:h-[100dvh] max-md:max-h-[100dvh] max-md:w-full max-md:border-0",
         )}
       >
-        <div className="flex items-start justify-between gap-3 border-b border-border px-5 py-5">
-          <div className="flex min-w-0 flex-1 items-start gap-2">
-            <button
-              type="button"
-              onClick={() => setMobilePhase("menu")}
-              className="mt-0.5 inline-flex size-10 shrink-0 items-center justify-center rounded-xl bg-muted text-foreground ring-1 ring-border md:hidden"
-              aria-label="Volver al menú"
-            >
-              <ArrowLeft className="size-4" aria-hidden />
-            </button>
-            <div className="min-w-0 flex-1">
-            <h2 className="text-2xl font-semibold tracking-tight">
-              Mesa {tableLabel}
+        <div className="border-b border-border px-5 py-5">
+          <div className="flex min-w-0 items-center gap-2">
+            <h2 className="min-w-0 truncate text-2xl font-semibold leading-none tracking-tight">
+              {tableLabel}
             </h2>
-            <p className="mt-1 text-sm text-muted-foreground">{attendant}</p>
-            </div>
+            {activeReservation ? (
+              <PosTableReservationIndicator
+                reservation={activeReservation}
+                onEdit={() => setReserveDialogOpen(true)}
+              />
+            ) : null}
           </div>
-          {order.tableId ? (
-            <PosTableHeaderMenu
-              tableId={order.tableId}
-              tableLabel={tableLabel}
-              hasBill={hasBill}
-              initialReservation={tableReservation}
-              disabled={ticketClosed || opening || checkoutPending}
-            />
-          ) : null}
+          <p className="mt-1 text-sm text-muted-foreground">{attendant}</p>
         </div>
 
         <div className="min-h-0 flex-1 space-y-1 overflow-y-auto px-3 py-3">
-          {order.items.length === 0 ? (
+          {!hasDraftToSend ? (
             <p className="px-2 py-6 text-sm text-muted-foreground">
               Agrega productos desde el menú.
             </p>
@@ -1036,86 +1151,69 @@ export function MobilePosView({
             <div className="flex justify-between text-muted-foreground">
               <span>Subtotal</span>
               <span className="tabular-nums">
-                {formatCurrency(order.subtotalMinor)}
+                {formatCurrency(ticketTotals.subtotalMinor)}
               </span>
             </div>
             <div className="flex justify-between text-muted-foreground">
               <span>Impuestos</span>
               <span className="tabular-nums">
-                {formatCurrency(order.taxMinor)}
+                {formatCurrency(ticketTotals.taxMinor)}
               </span>
             </div>
-            <div className="flex items-end justify-between pt-1">
+            <div className="flex items-center justify-between pt-1">
               <span className="text-base font-medium">Total</span>
-              <span className="text-3xl font-semibold tracking-tight tabular-nums">
-                {formatCurrency(order.totalMinor)}
+              <span className="text-3xl font-semibold tracking-tight tabular-nums leading-none">
+                {formatCurrency(ticketTotals.totalMinor)}
               </span>
             </div>
           </div>
 
-          <div className="grid grid-cols-3 gap-2">
-            {(
-              [
-                { id: "cash", label: "Efectivo", icon: Banknote },
-                { id: "card", label: "Tarjeta", icon: CreditCard },
-                { id: "transfer", label: "Transfer", icon: Wallet },
-              ] as const
-            ).map((method) => {
-              const selected = paymentMethod === method.id;
-              const Icon = method.icon;
-              return (
-                <button
-                  key={method.id}
-                  type="button"
-                  onClick={() => !opening && setPaymentMethod(method.id)}
-                  disabled={opening}
-                  className={cn(
-                    "flex flex-col items-center gap-1.5 rounded-2xl px-2 py-3 text-[11px] transition-colors",
-                    selected
-                      ? "bg-foreground text-background"
-                      : "bg-muted text-muted-foreground ring-1 ring-border",
-                    opening && "opacity-50",
-                  )}
-                >
-                  <Icon className="size-5" aria-hidden />
-                  {method.label}
-                </button>
-              );
-            })}
-          </div>
-
-          {canPrintTickets ? (
-            <button
-              type="button"
-              disabled={opening || checkoutPending}
-              onClick={reprintTickets}
-              className="flex h-12 w-full items-center justify-center gap-2 rounded-2xl bg-muted text-sm font-semibold text-foreground ring-1 ring-border transition-opacity hover:bg-muted/80 disabled:opacity-40"
-            >
-              <Printer className="size-4" aria-hidden />
-              Reimprimir tickets
-            </button>
-          ) : null}
-
-          <button
+          <Button
             type="button"
+            variant="primary"
+            size="lg"
+            className="w-full font-semibold"
             disabled={
               opening ||
-              checkoutPending ||
-              order.items.length === 0 ||
               order.status === "completed" ||
-              order.id.startsWith("opening-")
+              order.id.startsWith("opening-") ||
+              (hasDraftToSend
+                ? false
+                : sessionBill.totalMinor === 0 || checkoutPending)
             }
+            loading={opening || checkoutPending}
             onClick={primaryAction}
-            className="flex h-12 w-full items-center justify-center rounded-2xl bg-foreground text-sm font-semibold text-background transition-opacity disabled:opacity-40"
           >
-            {opening
-              ? "Abriendo mesa…"
-              : pendingCount > 0
-                ? "Enviar pedido"
-                : `Cobrar ${formatCurrency(order.totalMinor)}`}
-          </button>
+            {hasDraftToSend
+              ? "Enviar pedido"
+              : `Cobrar ${formatCurrency(sessionBill.totalMinor)}`}
+          </Button>
         </div>
       </aside>
+
+      <TableSessionPreviewDialog
+        open={sessionPreviewOpen}
+        onOpenChange={setSessionPreviewOpen}
+        batches={sessionBatches}
+        totalMinor={sessionBill.totalMinor}
+        canReprintTickets={canPrintTickets}
+        reprintDisabled={opening || checkoutPending}
+        reprintLoading={checkoutPending}
+        onReprintTickets={reprintTickets}
+      />
+
+      <PosCheckoutDialog
+        open={checkoutOpen}
+        onOpenChange={setCheckoutOpen}
+        order={order}
+        tableLabel={tableLabel}
+        batches={sessionBatches}
+        billSubtotalMinor={sessionBill.subtotalMinor}
+        billTaxMinor={sessionBill.taxMinor}
+        billTotalMinor={sessionBill.totalMinor}
+        onOrderUpdated={setOrder}
+        onOrderCompleted={handleCheckoutCompleted}
+      />
 
       <DrinkServeSheet
         product={drinkPickProduct}
@@ -1125,6 +1223,13 @@ export function MobilePosView({
           if (!open) setDrinkPickProduct(null);
         }}
         onChoose={chooseDrinkTiming}
+      />
+
+      <TableReservationDialog
+        table={tableForReserve}
+        open={reserveDialogOpen}
+        onOpenChange={setReserveDialogOpen}
+        onReserved={(updated) => setActiveReservation(updated.reservation)}
       />
     </div>
   );

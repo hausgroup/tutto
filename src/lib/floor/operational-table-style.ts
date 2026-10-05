@@ -9,14 +9,7 @@ export function chairStatusClass(status: TableStatus): string {
   return getSalonMeta(status).accentClass;
 }
 
-export function statusBarClass(status: TableStatus): string {
-  if (status === "closed") {
-    return "bg-zinc-300 dark:bg-zinc-600";
-  }
-  return getSalonMeta(status).barClass;
-}
-
-/** White elevated card — status lives in the left bar + chairs. */
+/** White elevated card — status lives in chair colour. */
 export function operationalTableSurfaceClass(status: TableStatus): string {
   const salon = toSalonState(status);
   void salon;

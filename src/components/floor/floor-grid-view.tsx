@@ -76,7 +76,7 @@ export function FloorGridView({
     return (
       <div
         className={cn(
-          "flex flex-1 items-center justify-center rounded-lg border border-dashed p-8 text-sm text-muted-foreground",
+          "flex flex-1 items-center justify-center p-8 text-sm text-muted-foreground",
           CANVAS_BG,
           className,
         )}
@@ -126,7 +126,7 @@ export function FloorGridView({
   return (
     <div
       className={cn(
-        "flex min-h-0 flex-1 flex-col overflow-hidden rounded-lg border",
+        "flex min-h-0 flex-1 flex-col overflow-hidden",
         CANVAS_BG,
         className,
       )}
@@ -224,7 +224,7 @@ export function FloorGridView({
             return (
               <div
                 key={`pad-${col}-${row}`}
-                className={cn("aspect-square rounded-[16px]", EMPTY_CELL)}
+                className="aspect-square rounded-[16px]"
                 style={{
                   gridColumn: col + 1,
                   gridRow: row + 1,

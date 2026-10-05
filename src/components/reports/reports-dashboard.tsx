@@ -170,18 +170,11 @@ export function ReportsDashboard({
 
   return (
     <div className="space-y-6">
-      <p className="text-sm text-muted-foreground">
-        Resumen de {reports.monthLabel}. Incluye ventas completadas, ranking de
-        productos y patrones de demanda.
-        {isMock ? (
-          <>
-            {" "}
-            <span className="text-amber-700 dark:text-amber-400">
-              Datos de ejemplo (mock) — desactiva HAUS_MOCK_REPORTS al lanzar.
-            </span>
-          </>
-        ) : null}
-      </p>
+      {isMock ? (
+        <p className="text-sm text-amber-700 dark:text-amber-400">
+          Datos de ejemplo (mock) — desactiva HAUS_MOCK_REPORTS al lanzar.
+        </p>
+      ) : null}
 
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <Card>

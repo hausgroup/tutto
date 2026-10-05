@@ -14,11 +14,6 @@ export default async function CashierPage() {
   const session = await cashierService.getOpenSession(context, restaurantId);
 
   return (
-    <div className="space-y-6">
-      <p className="text-sm text-muted-foreground">
-        Apertura, arqueo y cierre de turno con diferencias auditables.
-      </p>
-      <CashierPanel initialSession={session ? structuredClone(session) : null} />
-    </div>
+    <CashierPanel initialSession={session ? structuredClone(session) : null} />
   );
 }

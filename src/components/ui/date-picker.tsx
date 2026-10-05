@@ -1,10 +1,31 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import {
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
+import { createPortal } from "react-dom";
+import { DismissableLayerBranch } from "@radix-ui/react-dismissable-layer";
 import { CalendarDays, ChevronLeft, ChevronRight } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const WEEKDAYS = ["Lu", "Ma", "Mi", "Ju", "Vi", "Sá", "Do"] as const;
+const PANEL_WIDTH = 296;
+const PANEL_ESTIMATED_HEIGHT = 340;
+/** Above Arc dialog overlay (50) and content (51). */
+const PANEL_Z_INDEX = 100;
+
+export const SOFT_DATE_PICKER_PANEL_SELECTOR = "[data-soft-date-picker-panel]";
+
+export function isSoftDatePickerPanelTarget(target: EventTarget | null) {
+  return (
+    target instanceof Element &&
+    target.closest(SOFT_DATE_PICKER_PANEL_SELECTOR) !== null
+  );
+}
 
 function parseYmd(value: string): { y: number; m: number; d: number } | null {
   const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
@@ -48,6 +69,10 @@ function clampYmd(value: string, min?: string, max?: string) {
   return next;
 }
 
+function clamp(value: number, min: number, max: number) {
+  return Math.min(max, Math.max(min, value));
+}
+
 export function SoftDatePicker({
   id,
   value,
@@ -56,6 +81,7 @@ export function SoftDatePicker({
   max,
   align = "start",
   className,
+  triggerClassName,
 }: {
   id?: string;
   value: string;
@@ -64,9 +90,17 @@ export function SoftDatePicker({
   max?: string;
   align?: "start" | "end";
   className?: string;
+  triggerClassName?: string;
 }) {
   const rootRef = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
   const [open, setOpen] = useState(false);
+  const [panelPosition, setPanelPosition] = useState<{
+    top: number;
+    left: number;
+    width: number;
+  } | null>(null);
   const selected = parseYmd(value);
   const [view, setView] = useState(() =>
     selected
@@ -77,26 +111,70 @@ export function SoftDatePicker({
         })(),
   );
 
+  const wasOpenRef = useRef(false);
   useEffect(() => {
-    if (!open || !selected) return;
-    setView({ y: selected.y, m: selected.m });
+    if (open && !wasOpenRef.current && selected) {
+      setView({ y: selected.y, m: selected.m });
+    }
+    wasOpenRef.current = open;
   }, [open, selected?.y, selected?.m]);
+
+  function updatePanelPosition() {
+    const trigger = triggerRef.current;
+    if (!trigger) return;
+    const rect = trigger.getBoundingClientRect();
+    const width = Math.min(PANEL_WIDTH, window.innerWidth - 32);
+    const margin = 16;
+    const spaceBelow = window.innerHeight - rect.bottom - margin;
+    const spaceAbove = rect.top - margin;
+    const openBelow =
+      spaceBelow >= PANEL_ESTIMATED_HEIGHT || spaceBelow >= spaceAbove;
+
+    let top = openBelow ? rect.bottom + 8 : rect.top - PANEL_ESTIMATED_HEIGHT - 8;
+    let left =
+      align === "end" ? rect.right - width : rect.left;
+    left = clamp(left, margin, window.innerWidth - width - margin);
+    top = clamp(top, margin, window.innerHeight - PANEL_ESTIMATED_HEIGHT - margin);
+
+    setPanelPosition({ top, left, width });
+  }
+
+  useLayoutEffect(() => {
+    if (!open) {
+      setPanelPosition(null);
+      return;
+    }
+    updatePanelPosition();
+    window.addEventListener("resize", updatePanelPosition);
+    window.addEventListener("scroll", updatePanelPosition, true);
+    return () => {
+      window.removeEventListener("resize", updatePanelPosition);
+      window.removeEventListener("scroll", updatePanelPosition, true);
+    };
+  }, [open, align]);
 
   useEffect(() => {
     if (!open) return;
     function onPointerDown(event: MouseEvent) {
-      if (!rootRef.current?.contains(event.target as Node)) {
-        setOpen(false);
+      const target = event.target as Node;
+      if (
+        rootRef.current?.contains(target) ||
+        panelRef.current?.contains(target)
+      ) {
+        return;
       }
+      setOpen(false);
     }
     function onKey(event: KeyboardEvent) {
-      if (event.key === "Escape") setOpen(false);
+      if (event.key !== "Escape") return;
+      event.stopPropagation();
+      setOpen(false);
     }
     document.addEventListener("mousedown", onPointerDown);
-    document.addEventListener("keydown", onKey);
+    document.addEventListener("keydown", onKey, true);
     return () => {
       document.removeEventListener("mousedown", onPointerDown);
-      document.removeEventListener("keydown", onKey);
+      document.removeEventListener("keydown", onKey, true);
     };
   }, [open]);
 
@@ -136,18 +214,108 @@ export function SoftDatePicker({
     return false;
   }
 
+  const panel =
+    open && panelPosition
+      ? createPortal(
+          <DismissableLayerBranch>
+            <div
+              ref={panelRef}
+              data-soft-date-picker-panel
+              role="dialog"
+              aria-label="Elegir fecha"
+              className="pointer-events-auto rounded-[20px] bg-card p-3 text-card-foreground shadow-lg ring-1 ring-border"
+              style={{
+                position: "fixed",
+                top: panelPosition.top,
+                left: panelPosition.left,
+                width: panelPosition.width,
+                zIndex: PANEL_Z_INDEX,
+              }}
+            >
+            <div className="mb-3 flex items-center justify-between gap-2">
+              <button
+                type="button"
+                onClick={() => shiftMonth(-1)}
+                className="flex size-8 items-center justify-center rounded-full bg-muted text-muted-foreground ring-1 ring-border transition-colors hover:text-foreground"
+                aria-label="Mes anterior"
+              >
+                <ChevronLeft className="size-4" />
+              </button>
+              <p className="text-sm font-semibold capitalize tracking-tight">
+                {monthLabel}
+              </p>
+              <button
+                type="button"
+                onClick={() => shiftMonth(1)}
+                className="flex size-8 items-center justify-center rounded-full bg-muted text-muted-foreground ring-1 ring-border transition-colors hover:text-foreground"
+                aria-label="Mes siguiente"
+              >
+                <ChevronRight className="size-4" />
+              </button>
+            </div>
+
+            <div className="mb-1 grid grid-cols-7 gap-1">
+              {WEEKDAYS.map((day) => (
+                <span
+                  key={day}
+                  className="py-1 text-center text-[10px] font-medium text-muted-foreground"
+                >
+                  {day}
+                </span>
+              ))}
+            </div>
+
+            <div className="grid grid-cols-7 gap-1">
+              {cells.map((cell, index) => {
+                if (!cell) {
+                  return <span key={`empty-${index}`} className="size-9" />;
+                }
+                const ymd = toYmd(cell.y, cell.m, cell.d);
+                const disabled = isDisabled(cell.y, cell.m, cell.d);
+                const isSelected = value === ymd;
+                return (
+                  <button
+                    key={ymd}
+                    type="button"
+                    disabled={disabled}
+                    onClick={() => pick(cell.y, cell.m, cell.d)}
+                    className={cn(
+                      "flex size-9 items-center justify-center rounded-full text-sm tabular-nums transition-colors",
+                      disabled && "cursor-not-allowed opacity-30",
+                      !disabled &&
+                        !isSelected &&
+                        "hover:bg-muted text-foreground",
+                      isSelected &&
+                        "bg-[#C8E6C9] font-semibold text-zinc-900 dark:bg-[#5FA88A] dark:text-white",
+                    )}
+                  >
+                    {cell.d}
+                  </button>
+                );
+              })}
+            </div>
+            </div>
+          </DismissableLayerBranch>,
+          document.body,
+        )
+      : null;
+
   return (
     <div ref={rootRef} className={cn("relative", className)}>
       <button
+        ref={triggerRef}
         id={id}
         type="button"
         aria-haspopup="dialog"
         aria-expanded={open}
         onClick={() => setOpen((current) => !current)}
-        className={cn(
-          "flex h-11 w-full items-center gap-2 rounded-2xl bg-muted px-3.5 text-left text-sm text-foreground outline-none ring-1 ring-border transition-colors",
-          "hover:bg-muted/80 focus-visible:ring-2 focus-visible:ring-ring",
-        )}
+        className={
+          triggerClassName ??
+          cn(
+            "flex h-11 w-full items-center gap-2 rounded-2xl bg-muted px-3.5 text-left text-sm text-foreground outline-none ring-1 ring-border transition-colors",
+            "hover:bg-muted/80 focus-visible:ring-2 focus-visible:ring-ring",
+          )
+        }
       >
         <CalendarDays
           className="size-4 shrink-0 text-muted-foreground"
@@ -157,80 +325,7 @@ export function SoftDatePicker({
           {formatDisplay(value)}
         </span>
       </button>
-
-      {open ? (
-        <div
-          role="dialog"
-          aria-label="Elegir fecha"
-          className={cn(
-            "absolute bottom-[calc(100%+0.5rem)] z-50 w-[min(100vw-2rem,18.5rem)] rounded-[20px] bg-card p-3 text-card-foreground shadow-lg ring-1 ring-border",
-            align === "end" ? "right-0" : "left-0",
-          )}
-        >
-          <div className="mb-3 flex items-center justify-between gap-2">
-            <button
-              type="button"
-              onClick={() => shiftMonth(-1)}
-              className="flex size-8 items-center justify-center rounded-full bg-muted text-muted-foreground ring-1 ring-border transition-colors hover:text-foreground"
-              aria-label="Mes anterior"
-            >
-              <ChevronLeft className="size-4" />
-            </button>
-            <p className="text-sm font-semibold capitalize tracking-tight">
-              {monthLabel}
-            </p>
-            <button
-              type="button"
-              onClick={() => shiftMonth(1)}
-              className="flex size-8 items-center justify-center rounded-full bg-muted text-muted-foreground ring-1 ring-border transition-colors hover:text-foreground"
-              aria-label="Mes siguiente"
-            >
-              <ChevronRight className="size-4" />
-            </button>
-          </div>
-
-          <div className="mb-1 grid grid-cols-7 gap-1">
-            {WEEKDAYS.map((day) => (
-              <span
-                key={day}
-                className="py-1 text-center text-[10px] font-medium text-muted-foreground"
-              >
-                {day}
-              </span>
-            ))}
-          </div>
-
-          <div className="grid grid-cols-7 gap-1">
-            {cells.map((cell, index) => {
-              if (!cell) {
-                return <span key={`empty-${index}`} className="size-9" />;
-              }
-              const ymd = toYmd(cell.y, cell.m, cell.d);
-              const disabled = isDisabled(cell.y, cell.m, cell.d);
-              const isSelected = value === ymd;
-              return (
-                <button
-                  key={ymd}
-                  type="button"
-                  disabled={disabled}
-                  onClick={() => pick(cell.y, cell.m, cell.d)}
-                  className={cn(
-                    "flex size-9 items-center justify-center rounded-full text-sm tabular-nums transition-colors",
-                    disabled && "cursor-not-allowed opacity-30",
-                    !disabled &&
-                      !isSelected &&
-                      "hover:bg-muted text-foreground",
-                    isSelected &&
-                      "bg-[#C8E6C9] font-semibold text-zinc-900 dark:bg-[#5FA88A] dark:text-white",
-                  )}
-                >
-                  {cell.d}
-                </button>
-              );
-            })}
-          </div>
-        </div>
-      ) : null}
+      {panel}
     </div>
   );
 }

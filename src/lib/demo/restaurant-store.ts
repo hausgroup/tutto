@@ -112,6 +112,7 @@ function createInitialDemoRestaurantState(): DemoRestaurantState {
           name: "Hamburguesas",
           sortOrder: 1,
           isActive: true,
+          preparationStation: "kitchen",
         },
         {
           id: catDrinks,
@@ -119,6 +120,7 @@ function createInitialDemoRestaurantState(): DemoRestaurantState {
           name: "Bebidas",
           sortOrder: 2,
           isActive: true,
+          preparationStation: "bar",
         },
       ],
       products: [

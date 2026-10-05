@@ -3,7 +3,7 @@
 import { usePathname } from "next/navigation";
 import { signOutAction } from "@/lib/auth/actions";
 import { ModeToggle } from "@/components/mode-toggle";
-import { ReportsHeaderActions } from "@/components/reports/reports-header-actions";
+import { PAGE_HEADER_ACTIONS_SLOT_ID } from "@/components/layout/page-header-actions";
 import { Button } from "@/components/ui/button";
 import { SidebarTrigger, useSidebar } from "@/components/ui/sidebar";
 import { getPageTitle } from "@/lib/navigation";
@@ -15,17 +15,16 @@ export function SiteHeader() {
   const { state, isMobile } = useSidebar();
   const showTrigger = isMobile || state === "collapsed";
   const isPanel = pathname === "/dashboard";
-  const isReports = pathname === "/reports" || pathname.startsWith("/reports/");
-
   return (
-    <header className="flex h-16 shrink-0 items-center gap-2 border-b border-border/70 bg-transparent px-4 md:px-6">
+    <header className="flex min-h-16 shrink-0 flex-wrap items-center gap-x-2 gap-y-2 border-b border-border/70 bg-transparent px-4 py-2 md:px-6 md:py-0 md:h-16">
       <SidebarTrigger className={cn("-ml-1", !showTrigger && "hidden")} />
       <div className="flex min-w-0 flex-1">
         <h1 className="truncate text-xl font-semibold tracking-tight md:text-2xl">
           {title}
         </h1>
       </div>
-      <div className="ml-auto flex items-center gap-2">
+      <div className="ml-auto flex flex-wrap items-center justify-end gap-2">
+        <div id={PAGE_HEADER_ACTIONS_SLOT_ID} className="contents" />
         {isPanel ? (
           <>
             <ModeToggle />
@@ -36,7 +35,6 @@ export function SiteHeader() {
             </form>
           </>
         ) : null}
-        {isReports ? <ReportsHeaderActions /> : null}
       </div>
     </header>
   );

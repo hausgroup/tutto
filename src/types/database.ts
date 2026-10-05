@@ -164,6 +164,7 @@ export type Database = {
           reservation_guest_name: string | null;
           reservation_party_size: number | null;
           reservation_occasion: string | null;
+          reservation_scheduled_at: string | null;
           created_at: string;
           updated_at: string;
         };
@@ -183,6 +184,7 @@ export type Database = {
           reservation_guest_name?: string | null;
           reservation_party_size?: number | null;
           reservation_occasion?: string | null;
+          reservation_scheduled_at?: string | null;
         };
         Update: {
           floor_area_id?: string;
@@ -199,6 +201,7 @@ export type Database = {
           reservation_guest_name?: string | null;
           reservation_party_size?: number | null;
           reservation_occasion?: string | null;
+          reservation_scheduled_at?: string | null;
         };
         Relationships: [];
       };
@@ -215,6 +218,8 @@ export type Database = {
       payments: LooseTable;
       cashier_sessions: LooseTable;
       staff_invitations: LooseTable;
+      historical_sales_imports: LooseTable;
+      historical_sales: LooseTable;
       test_feedback: {
         Row: {
           id: string;

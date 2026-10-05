@@ -13,6 +13,7 @@ type CategoryRow = {
   name: string;
   sort_order: number;
   is_active: boolean;
+  preparation_station?: PreparationStation;
 };
 
 type ProductRow = {
@@ -47,6 +48,7 @@ function mapCategory(row: CategoryRow): ProductCategory {
     name: row.name,
     sortOrder: row.sort_order,
     isActive: row.is_active,
+    preparationStation: row.preparation_station ?? "kitchen",
   };
 }
 
@@ -86,7 +88,9 @@ export async function fetchCatalogSnapshot(
   const [categoriesRes, productsRes, modifiersRes] = await Promise.all([
     supabase
       .from("product_categories")
-      .select("id, restaurant_id, name, sort_order, is_active")
+      .select(
+        "id, restaurant_id, name, sort_order, is_active, preparation_station",
+      )
       .eq("restaurant_id", restaurantId)
       .order("sort_order"),
     supabase
@@ -157,6 +161,7 @@ export async function insertCategory(input: {
   restaurantId: string;
   name: string;
   sortOrder: number;
+  preparationStation: PreparationStation;
 }): Promise<ProductCategory> {
   const supabase = await createSupabaseServerClient();
   const { data, error } = await supabase
@@ -166,8 +171,11 @@ export async function insertCategory(input: {
       name: input.name,
       sort_order: input.sortOrder,
       is_active: true,
+      preparation_station: input.preparationStation,
     })
-    .select("id, restaurant_id, name, sort_order, is_active")
+    .select(
+      "id, restaurant_id, name, sort_order, is_active, preparation_station",
+    )
     .single();
 
   if (error) throw error;
@@ -205,6 +213,65 @@ export async function insertProduct(input: {
     .select(
       "id, restaurant_id, category_id, name, description, sku, price_minor, cost_minor, tax_rate_bps, is_active, track_inventory, preparation_station",
     )
+    .single();
+
+  if (error) throw error;
+  return mapProduct(data as ProductRow);
+}
+
+const productSelect =
+  "id, restaurant_id, category_id, name, description, sku, price_minor, cost_minor, tax_rate_bps, is_active, track_inventory, preparation_station";
+
+export async function updateProduct(input: {
+  restaurantId: string;
+  productId: string;
+  categoryId: string;
+  name: string;
+  description: string | null;
+  sku: string | null;
+  priceMinor: number;
+  costMinor: number;
+  taxRateBps: number;
+  preparationStation: PreparationStation;
+  trackInventory: boolean;
+  isActive: boolean;
+}): Promise<Product> {
+  const supabase = await createSupabaseServerClient();
+  const { data, error } = await supabase
+    .from("products")
+    .update({
+      category_id: input.categoryId,
+      name: input.name,
+      description: input.description,
+      sku: input.sku,
+      price_minor: input.priceMinor,
+      cost_minor: input.costMinor,
+      tax_rate_bps: input.taxRateBps,
+      preparation_station: input.preparationStation,
+      track_inventory: input.trackInventory,
+      is_active: input.isActive,
+    })
+    .eq("id", input.productId)
+    .eq("restaurant_id", input.restaurantId)
+    .select(productSelect)
+    .single();
+
+  if (error) throw error;
+  return mapProduct(data as ProductRow);
+}
+
+export async function setProductActive(input: {
+  restaurantId: string;
+  productId: string;
+  isActive: boolean;
+}): Promise<Product> {
+  const supabase = await createSupabaseServerClient();
+  const { data, error } = await supabase
+    .from("products")
+    .update({ is_active: input.isActive })
+    .eq("id", input.productId)
+    .eq("restaurant_id", input.restaurantId)
+    .select(productSelect)
     .single();
 
   if (error) throw error;

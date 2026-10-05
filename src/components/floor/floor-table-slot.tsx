@@ -10,7 +10,6 @@ import { effectiveOperationalStatus, getSalonMeta } from "@/lib/floor/status";
 import {
   chairStatusClass,
   operationalTableSurfaceClass,
-  statusBarClass,
 } from "@/lib/floor/operational-table-style";
 import type { RestaurantTable, TableStatus } from "@/lib/floor/types";
 import { formatCurrency } from "@/lib/utils/money";
@@ -89,9 +88,6 @@ export function FloorTableSlot({
   const chairClass = neutralAppearance
     ? NEUTRAL_ACCENT
     : chairStatusClass(displayStatus);
-  const barClass = neutralAppearance
-    ? NEUTRAL_ACCENT
-    : statusBarClass(displayStatus);
   const surface = getSalonTableSurfaceStyle();
   const chairs = getSalonChairLayouts();
   const disabled = !table.isActive && !allowInactive;
@@ -130,6 +126,10 @@ export function FloorTableSlot({
         "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
         "active:scale-[0.98]",
         draggable && !disabled && "cursor-grab active:cursor-grabbing",
+        !draggable &&
+          !disabled &&
+          !busy &&
+          "cursor-pointer transition-[transform,box-shadow] duration-200 ease-out motion-reduce:transition-none [@media(hover:hover)]:hover:scale-[1.03] [@media(hover:hover)]:hover:shadow-[0_10px_28px_rgba(15,15,15,0.1)] dark:[@media(hover:hover)]:hover:shadow-[0_10px_28px_rgba(0,0,0,0.35)]",
         disabled && "cursor-not-allowed opacity-40",
         busy && "cursor-progress opacity-70",
         selected &&
@@ -172,15 +172,7 @@ export function FloorTableSlot({
             surfaceClass,
           )}
         >
-          <span
-            className={cn(
-              "absolute top-[12%] bottom-[12%] left-0 w-1 rounded-full",
-              barClass,
-            )}
-            aria-hidden
-          />
-
-          <div className="flex min-h-0 flex-1 flex-col items-start justify-between gap-1 py-2.5 pl-3.5 pr-2 sm:py-3 sm:pl-4 sm:pr-3">
+          <div className="flex min-h-0 flex-1 flex-col items-start justify-between gap-1 px-2 py-2.5 sm:px-3 sm:py-3">
             <div className="min-w-0 space-y-1">
               <div className="flex w-full items-start justify-between gap-1">
                 <p className="truncate text-sm font-semibold leading-none tracking-tight text-zinc-800 dark:text-zinc-100">

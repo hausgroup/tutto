@@ -6,6 +6,7 @@ export type ProductCategory = {
   name: string;
   sortOrder: number;
   isActive: boolean;
+  preparationStation: PreparationStation;
 };
 
 export type Product = {

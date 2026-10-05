@@ -58,26 +58,21 @@ function printBlob(blob: Blob, title: string): Promise<void> {
   });
 }
 
-export function openCombinedTicketPdf(base64: string): void {
-  const url = URL.createObjectURL(base64ToBlob(base64));
-  window.open(url, "_blank", "noopener,noreferrer");
-  window.setTimeout(() => URL.revokeObjectURL(url), 120_000);
-}
-
-/** Opens the combined PDF, then one print dialog per station (Cocina / Bar). */
+/** In-page print dialogs only (no new tabs): one per station, or a single combined PDF. */
 export async function printStationTicketPdfs(input: {
   combinedPdfBase64?: string;
   stationPdfs?: StationPdfJob[];
 }): Promise<void> {
-  if (input.combinedPdfBase64) {
-    openCombinedTicketPdf(input.combinedPdfBase64);
+  if (input.stationPdfs?.length) {
+    for (const job of input.stationPdfs) {
+      await printBlob(
+        base64ToBlob(job.pdfBase64),
+        `Ticket ${STATION_LABEL[job.station]}`,
+      );
+    }
+    return;
   }
-  if (!input.stationPdfs?.length) return;
-
-  for (const job of input.stationPdfs) {
-    await printBlob(
-      base64ToBlob(job.pdfBase64),
-      `Ticket ${STATION_LABEL[job.station]}`,
-    );
+  if (input.combinedPdfBase64) {
+    await printBlob(base64ToBlob(input.combinedPdfBase64), "Ticket pedido");
   }
 }

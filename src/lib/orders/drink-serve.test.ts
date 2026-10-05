@@ -11,12 +11,26 @@ import {
   resolveServeTiming,
   linesMatchForQuantityAdjust,
 } from "@/lib/orders/drink-serve";
-import type { CatalogSnapshot } from "@/lib/catalog/types";
+import type { CatalogSnapshot, ProductCategory } from "@/lib/catalog/types";
 import type { Order, OrderItem } from "@/lib/orders/types";
 
-const categories = [
-  { id: "cat-cocktails", name: "Cocktails", restaurantId: "r1", sortOrder: 1, isActive: true },
-  { id: "cat-kitchen", name: "Platos", restaurantId: "r1", sortOrder: 2, isActive: true },
+const categories: ProductCategory[] = [
+  {
+    id: "cat-cocktails",
+    name: "Cocktails",
+    restaurantId: "r1",
+    sortOrder: 1,
+    isActive: true,
+    preparationStation: "bar",
+  },
+  {
+    id: "cat-kitchen",
+    name: "Platos",
+    restaurantId: "r1",
+    sortOrder: 2,
+    isActive: true,
+    preparationStation: "kitchen",
+  },
 ];
 
 function barItem(
@@ -148,7 +162,7 @@ describe("applyOptimisticQuantityDelta", () => {
     order = applyOptimisticQuantityDelta(order, catalog, "p1", 1, "immediate");
     expect(order.items).toHaveLength(1);
     expect(order.items[0]?.quantity).toBe(3);
-    expect(order.items[0]?.status).toBe("sent");
+    expect(order.items[0]?.status).toBe("pending");
   });
 });
 

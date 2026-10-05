@@ -13,7 +13,7 @@ export function FloorCanvas({
 }) {
   return (
     <div
-      className={cn("overflow-auto rounded-xl border", className)}
+      className={cn("overflow-auto", className)}
     >
       <div
         className="relative bg-[radial-gradient(circle_at_1px_1px,oklch(0.75_0.02_85/0.15)_1px,transparent_0)] bg-size-[20px_20px] bg-[oklch(0.97_0.008_90)] dark:bg-[oklch(0.22_0.01_85)]"

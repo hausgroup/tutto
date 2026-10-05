@@ -3,11 +3,26 @@ import {
   resolvePrintStationForItem,
   splitOrderItemsByPrintStation,
 } from "@/lib/printing/station-routing";
+import type { ProductCategory } from "@/lib/catalog/types";
 import type { OrderItem } from "@/lib/orders/types";
 
-const categories = [
-  { id: "cat-food", name: "Platos", restaurantId: "r1", sortOrder: 1, isActive: true },
-  { id: "cat-bar", name: "Cocktails", restaurantId: "r1", sortOrder: 2, isActive: true },
+const categories: ProductCategory[] = [
+  {
+    id: "cat-food",
+    name: "Platos",
+    restaurantId: "r1",
+    sortOrder: 1,
+    isActive: true,
+    preparationStation: "kitchen",
+  },
+  {
+    id: "cat-bar",
+    name: "Cocktails",
+    restaurantId: "r1",
+    sortOrder: 2,
+    isActive: true,
+    preparationStation: "bar",
+  },
 ];
 
 function item(

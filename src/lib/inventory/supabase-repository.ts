@@ -94,7 +94,7 @@ export async function fetchInventorySnapshot(
       )
       .eq("restaurant_id", restaurantId)
       .order("created_at", { ascending: false })
-      .limit(50),
+      .limit(120),
     supabase
       .from("recipes")
       .select("id, restaurant_id, product_id, name")
@@ -214,5 +214,200 @@ export async function consumeProductRecipeStock(input: {
     p_quantity: input.quantity,
     p_reference_id: input.referenceId ?? null,
   });
+  if (error) throw error;
+}
+
+export async function insertIngredient(input: {
+  restaurantId: string;
+  name: string;
+  unit: string;
+  stockQuantity: number;
+  minStockQuantity: number;
+  costMinorPerUnit: number;
+}): Promise<Ingredient> {
+  const supabase = await createSupabaseServerClient();
+  const { data, error } = await supabase
+    .from("ingredients")
+    .insert({
+      restaurant_id: input.restaurantId,
+      name: input.name,
+      unit: input.unit,
+      stock_quantity: input.stockQuantity,
+      min_stock_quantity: input.minStockQuantity,
+      cost_minor_per_unit: input.costMinorPerUnit,
+      is_active: true,
+    })
+    .select(
+      "id, restaurant_id, name, unit, stock_quantity, min_stock_quantity, cost_minor_per_unit, is_active",
+    )
+    .single();
+  if (error) throw error;
+  return mapIngredient(data as IngredientRow);
+}
+
+export async function updateIngredientRow(input: {
+  restaurantId: string;
+  ingredientId: string;
+  name: string;
+  unit: string;
+  minStockQuantity: number;
+  costMinorPerUnit: number;
+  isActive?: boolean;
+}): Promise<Ingredient> {
+  const supabase = await createSupabaseServerClient();
+  const { data, error } = await supabase
+    .from("ingredients")
+    .update({
+      name: input.name,
+      unit: input.unit,
+      min_stock_quantity: input.minStockQuantity,
+      cost_minor_per_unit: input.costMinorPerUnit,
+      ...(input.isActive !== undefined ? { is_active: input.isActive } : {}),
+    })
+    .eq("id", input.ingredientId)
+    .eq("restaurant_id", input.restaurantId)
+    .select(
+      "id, restaurant_id, name, unit, stock_quantity, min_stock_quantity, cost_minor_per_unit, is_active",
+    )
+    .single();
+  if (error) throw error;
+  return mapIngredient(data as IngredientRow);
+}
+
+async function readIngredient(
+  restaurantId: string,
+  ingredientId: string,
+): Promise<IngredientRow> {
+  const supabase = await createSupabaseServerClient();
+  const { data, error } = await supabase
+    .from("ingredients")
+    .select(
+      "id, restaurant_id, name, unit, stock_quantity, min_stock_quantity, cost_minor_per_unit, is_active",
+    )
+    .eq("restaurant_id", restaurantId)
+    .eq("id", ingredientId)
+    .single();
+  if (error) throw error;
+  return data as IngredientRow;
+}
+
+export async function applyStockMovement(input: {
+  restaurantId: string;
+  ingredientId: string;
+  movementType: InventoryMovementType;
+  quantityDelta: number;
+  notes?: string;
+  userId: string;
+}): Promise<Ingredient> {
+  const ingredient = await readIngredient(
+    input.restaurantId,
+    input.ingredientId,
+  );
+  const current = Number(ingredient.stock_quantity);
+  const next = current + input.quantityDelta;
+  if (next < 0) throw new Error("INSUFFICIENT_STOCK");
+
+  const supabase = await createSupabaseServerClient();
+  const costMinor = Number(ingredient.cost_minor_per_unit);
+
+  const { error: movementError } = await supabase
+    .from("inventory_movements")
+    .insert({
+      restaurant_id: input.restaurantId,
+      ingredient_id: input.ingredientId,
+      movement_type: input.movementType,
+      quantity_delta: input.quantityDelta,
+      unit_cost_minor: costMinor,
+      reference_type: "manual",
+      reference_id: null,
+      notes: input.notes ?? null,
+      created_by: input.userId,
+    });
+  if (movementError) throw movementError;
+
+  const { data: updated, error: updateError } = await supabase
+    .from("ingredients")
+    .update({ stock_quantity: next })
+    .eq("id", input.ingredientId)
+    .eq("restaurant_id", input.restaurantId)
+    .select(
+      "id, restaurant_id, name, unit, stock_quantity, min_stock_quantity, cost_minor_per_unit, is_active",
+    )
+    .single();
+  if (updateError) throw updateError;
+  return mapIngredient(updated as IngredientRow);
+}
+
+export async function saveRecipeWithLines(input: {
+  restaurantId: string;
+  productId: string;
+  name: string;
+  lines: { ingredientId: string; quantity: number; wastageBps: number }[];
+}): Promise<Recipe> {
+  const supabase = await createSupabaseServerClient();
+
+  const { data: existing, error: findError } = await supabase
+    .from("recipes")
+    .select("id")
+    .eq("restaurant_id", input.restaurantId)
+    .eq("product_id", input.productId)
+    .maybeSingle();
+  if (findError) throw findError;
+
+  let recipeId = existing?.id as string | undefined;
+
+  if (recipeId) {
+    const { error: updateError } = await supabase
+      .from("recipes")
+      .update({ name: input.name })
+      .eq("id", recipeId);
+    if (updateError) throw updateError;
+    const { error: deleteError } = await supabase
+      .from("recipe_lines")
+      .delete()
+      .eq("recipe_id", recipeId);
+    if (deleteError) throw deleteError;
+  } else {
+    const { data: created, error: createError } = await supabase
+      .from("recipes")
+      .insert({
+        restaurant_id: input.restaurantId,
+        product_id: input.productId,
+        name: input.name,
+      })
+      .select("id")
+      .single();
+    if (createError) throw createError;
+    recipeId = created.id as string;
+  }
+
+  const lineRows = input.lines.map((line) => ({
+    recipe_id: recipeId!,
+    ingredient_id: line.ingredientId,
+    quantity: line.quantity,
+    wastage_bps: line.wastageBps,
+  }));
+
+  const { error: linesError } = await supabase
+    .from("recipe_lines")
+    .insert(lineRows);
+  if (linesError) throw linesError;
+
+  const snapshot = await fetchInventorySnapshot(input.restaurantId);
+  const recipe = snapshot.recipes.find((r) => r.id === recipeId);
+  if (!recipe) throw new Error("RECIPE_NOT_FOUND");
+  return recipe;
+}
+
+export async function deleteRecipe(
+  restaurantId: string,
+  recipeId: string,
+): Promise<void> {
+  const supabase = await createSupabaseServerClient();
+  const { error } = await supabase
+    .from("recipes")
+    .delete()
+    .eq("id", recipeId)
+    .eq("restaurant_id", restaurantId);
   if (error) throw error;
 }

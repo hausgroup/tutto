@@ -17,6 +17,8 @@ export type TableReservation = {
   guestName: string;
   partySize: number;
   occasion: string;
+  /** ISO-8601 instant for when guests are expected. */
+  scheduledAt: string | null;
 };
 
 export type FloorArea = {

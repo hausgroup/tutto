@@ -56,11 +56,6 @@ export default async function SettingsPage() {
 
   return (
     <div className="space-y-6">
-      <p className="text-sm text-muted-foreground">
-        Estado de la fundación del proyecto y enlaces útiles mientras conectas
-        Supabase.
-      </p>
-
       {canUseDemoExperience() ? (
         <Alert>
           <AlertTitle>Modo demo activo</AlertTitle>

@@ -15,6 +15,14 @@ import {
   aggregateRestaurantReports,
   type RestaurantReports,
 } from "@/lib/orders/reports";
+import {
+  fetchAllHistoricalSalesForExport,
+  fetchHistoricalSalesForMonth,
+} from "@/lib/reports/historical-sales/repository";
+import {
+  historicalRecordsToExportRows,
+  historicalRecordsToOrdersAndPayments,
+} from "@/lib/reports/historical-sales/to-orders";
 import { isTodayInBogota } from "@/lib/utils/date";
 import { calculateLineItem } from "@/lib/orders/calculate";
 import { withMealLineMergeKey } from "@/lib/orders/consolidate-lines";
@@ -49,6 +57,7 @@ type OrderItemRow = {
   preparation_station: PreparationStation;
   notes: string | null;
   serve_timing: DrinkServeTiming | null;
+  sent_at: string | null;
 };
 
 type OrderItemModifierRow = {
@@ -109,6 +118,7 @@ function mapOrderItem(
     preparationStation: row.preparation_station,
     serveTiming: row.serve_timing ?? null,
     notes: row.notes,
+    sentAt: row.sent_at ?? null,
     modifiers,
   };
 }
@@ -130,7 +140,7 @@ async function loadOrderItems(orderId: string): Promise<OrderItem[]> {
   const { data: items, error: itemsError } = await supabase
     .from("order_items")
     .select(
-      "id, order_id, product_id, product_name, quantity, unit_price_minor, tax_rate_bps, line_subtotal_minor, line_tax_minor, line_total_minor, status, preparation_station, serve_timing, notes",
+      "id, order_id, product_id, product_name, quantity, unit_price_minor, tax_rate_bps, line_subtotal_minor, line_tax_minor, line_total_minor, status, preparation_station, serve_timing, notes, sent_at",
     )
     .eq("order_id", orderId)
     .order("created_at");
@@ -311,7 +321,7 @@ export async function insertOrderItem(input: {
       status: itemStatus,
     })
     .select(
-      "id, order_id, product_id, product_name, quantity, unit_price_minor, tax_rate_bps, line_subtotal_minor, line_tax_minor, line_total_minor, status, preparation_station, serve_timing, notes",
+      "id, order_id, product_id, product_name, quantity, unit_price_minor, tax_rate_bps, line_subtotal_minor, line_tax_minor, line_total_minor, status, preparation_station, serve_timing, notes, sent_at",
     )
     .single();
 
@@ -429,9 +439,10 @@ export async function mergeDuplicateWithMealOrderItems(
 
 export async function markPendingItemsSent(orderId: string) {
   const supabase = await createSupabaseServerClient();
+  const sentAt = new Date().toISOString();
   const { error: itemsError } = await supabase
     .from("order_items")
-    .update({ status: "sent" })
+    .update({ status: "sent", sent_at: sentAt })
     .eq("order_id", orderId)
     .eq("status", "pending");
 
@@ -443,9 +454,28 @@ export async function markPendingItemsSent(orderId: string) {
     .eq("id", orderId);
 
   if (orderError) throw orderError;
+
+  return sentAt;
 }
 
-export async function completeOrderPayment(input: {
+export async function sumCompletedPaymentsForOrder(
+  orderId: string,
+): Promise<number> {
+  const supabase = await createSupabaseServerClient();
+  const { data, error } = await supabase
+    .from("payments")
+    .select("amount_minor")
+    .eq("order_id", orderId)
+    .eq("status", "completed");
+
+  if (error) throw error;
+  return ((data ?? []) as { amount_minor: number | string }[]).reduce(
+    (sum, row) => sum + Number(row.amount_minor),
+    0,
+  );
+}
+
+export async function insertOrderPayment(input: {
   restaurantId: string;
   orderId: string;
   methodCode: string;
@@ -470,22 +500,6 @@ export async function completeOrderPayment(input: {
 
   if (paymentError) throw paymentError;
 
-  const { error: itemsError } = await supabase
-    .from("order_items")
-    .update({ status: "delivered" })
-    .eq("order_id", input.orderId)
-    .neq("status", "cancelled");
-
-  if (itemsError) throw itemsError;
-
-  const closedAt = new Date().toISOString();
-  const { error: orderError } = await supabase
-    .from("orders")
-    .update({ status: "completed", closed_at: closedAt })
-    .eq("id", input.orderId);
-
-  if (orderError) throw orderError;
-
   const row = payment as PaymentRow;
   return {
     id: row.id,
@@ -496,6 +510,38 @@ export async function completeOrderPayment(input: {
     status: "completed",
     createdAt: row.created_at,
   };
+}
+
+export async function finalizeOrderFulfillment(orderId: string): Promise<void> {
+  const supabase = await createSupabaseServerClient();
+  const { error: itemsError } = await supabase
+    .from("order_items")
+    .update({ status: "delivered" })
+    .eq("order_id", orderId)
+    .neq("status", "cancelled");
+
+  if (itemsError) throw itemsError;
+
+  const closedAt = new Date().toISOString();
+  const { error: orderError } = await supabase
+    .from("orders")
+    .update({ status: "completed", closed_at: closedAt })
+    .eq("id", orderId);
+
+  if (orderError) throw orderError;
+}
+
+/** @deprecated Prefer insertOrderPayment + finalizeOrderFulfillment via service */
+export async function completeOrderPayment(input: {
+  restaurantId: string;
+  orderId: string;
+  methodCode: string;
+  amountMinor: number;
+  processedBy: string;
+}): Promise<Payment> {
+  const payment = await insertOrderPayment(input);
+  await finalizeOrderFulfillment(input.orderId);
+  return payment;
 }
 
 export async function incrementCashierSessionSales(input: {
@@ -720,7 +766,7 @@ export async function fetchRestaurantReports(
     const { data: itemRows, error: itemsError } = await supabase
       .from("order_items")
       .select(
-        "id, order_id, product_id, product_name, quantity, unit_price_minor, tax_rate_bps, line_subtotal_minor, line_tax_minor, line_total_minor, status, preparation_station, serve_timing, notes",
+        "id, order_id, product_id, product_name, quantity, unit_price_minor, tax_rate_bps, line_subtotal_minor, line_tax_minor, line_total_minor, status, preparation_station, serve_timing, notes, sent_at",
       )
       .in("order_id", orderIds);
 
@@ -777,7 +823,14 @@ export async function fetchRestaurantReports(
     }
   }
 
-  return aggregateRestaurantReports({ orders, payments, yearMonth });
+  const historical = await fetchHistoricalSalesForMonth(restaurantId, yearMonth);
+  const merged = historicalRecordsToOrdersAndPayments(historical);
+
+  return aggregateRestaurantReports({
+    orders: [...orders, ...merged.orders],
+    payments: [...payments, ...merged.payments],
+    yearMonth,
+  });
 }
 
 export async function listOrders(restaurantId: string): Promise<Order[]> {
@@ -795,26 +848,42 @@ export async function listOrders(restaurantId: string): Promise<Order[]> {
   return Promise.all(((data ?? []) as OrderRow[]).map(mapFullOrder));
 }
 
-/** Lightweight bill chips for the floor — no line-item hydration. */
+/** Lightweight bill chips for the floor — unpaid sent lines only. */
 export async function fetchOpenBillTotalsByTableId(
   restaurantId: string,
 ): Promise<Record<string, number>> {
   const supabase = await createSupabaseServerClient();
-  const { data, error } = await supabase
+  const { data: orders, error: ordersError } = await supabase
     .from("orders")
-    .select("table_id, total_minor")
+    .select("id, table_id")
     .eq("restaurant_id", restaurantId)
     .in("status", ["open", "in_progress", "ready"])
     .not("table_id", "is", null);
 
-  if (error) throw error;
+  if (ordersError) throw ordersError;
+  const rows = orders ?? [];
+  if (rows.length === 0) return {};
+
+  const tableByOrderId = new Map<string, string>();
+  for (const row of rows) {
+    tableByOrderId.set(row.id as string, row.table_id as string);
+  }
+
+  const { data: items, error: itemsError } = await supabase
+    .from("order_items")
+    .select("order_id, line_total_minor, status, quantity")
+    .in("order_id", [...tableByOrderId.keys()])
+    .in("status", ["sent", "in_progress", "ready"]);
+
+  if (itemsError) throw itemsError;
 
   const totals: Record<string, number> = {};
-  for (const row of data ?? []) {
-    const tableId = row.table_id as string | null;
+  for (const item of items ?? []) {
+    if (Number(item.quantity) <= 0) continue;
+    const tableId = tableByOrderId.get(item.order_id as string);
     if (!tableId) continue;
     totals[tableId] =
-      (totals[tableId] ?? 0) + Number(row.total_minor);
+      (totals[tableId] ?? 0) + Number(item.line_total_minor);
   }
   return totals;
 }
@@ -978,7 +1047,7 @@ export async function fetchCompletedSalesForReports(
     siigoByOrder.set(entityId, mapped);
   }
 
-  return orders.map((row) => {
+  const liveRows = orders.map((row) => {
     const orderId = row.id as string;
     const tableId = row.table_id as string | null;
     return {
@@ -996,4 +1065,16 @@ export async function fetchCompletedSalesForReports(
       siigoStatus: siigoByOrder.get(orderId) ?? "not_queued",
     };
   });
+
+  const historical = await fetchAllHistoricalSalesForExport(restaurantId, limit);
+  const historicalRows = historicalRecordsToExportRows(historical).map(
+    (row) => ({
+      ...row,
+      siigoStatus: "not_queued" as const,
+    }),
+  );
+
+  return [...liveRows, ...historicalRows]
+    .sort((a, b) => b.closedAt.localeCompare(a.closedAt))
+    .slice(0, limit);
 }

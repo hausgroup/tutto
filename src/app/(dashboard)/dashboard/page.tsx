@@ -18,8 +18,7 @@ import {
 import { floorService } from "@/lib/floor/service";
 import { reportService } from "@/lib/orders/service";
 import { formatCurrency } from "@/lib/utils/money";
-import { canUseDemoExperience, isSupabaseConfigured } from "@/lib/env";
-import { PageIntro, SoftSection, SoftStat, cosyPastel } from "@/components/ui/soft";
+import { SoftSection, SoftStat, cosyPastel } from "@/components/ui/soft";
 import { cn } from "@/lib/utils";
 
 const QUICK_LINKS = [
@@ -65,12 +64,6 @@ export default async function DashboardPage() {
 
   return (
     <div className="space-y-8">
-      <PageIntro>
-        {canUseDemoExperience()
-          ? "Vista demo — conecta Supabase para datos persistentes."
-          : "Resumen operativo del restaurante."}
-      </PageIntro>
-
       <SoftSection title="Hoy">
         <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
           <SoftStat
@@ -113,11 +106,6 @@ export default async function DashboardPage() {
       </SoftSection>
 
       <SoftSection title="Operación">
-        <p className="mb-3 text-sm text-muted-foreground">
-          {isSupabaseConfigured()
-            ? "Supabase detectado. Aplica migraciones y seed de catálogo/pedidos si faltan datos."
-            : "Modo demo: catálogo, POS, inventario, caja y reportes en memoria."}
-        </p>
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-4">
           {QUICK_LINKS.map((item, index) => {
             const Icon = item.icon;

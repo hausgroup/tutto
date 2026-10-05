@@ -89,6 +89,28 @@ export class DemoFloorRepository implements FloorRepository {
     const area = this.store.areas.find((item) => item.id === input.floorAreaId);
     if (!area) throw new Error("AREA_NOT_FOUND");
 
+    const label = input.label.trim();
+    if (
+      this.store.tables.some(
+        (table) =>
+          table.restaurantId === input.restaurantId &&
+          table.floorAreaId === input.floorAreaId &&
+          table.label === label,
+      )
+    ) {
+      throw new Error("TABLE_LABEL_TAKEN_IN_AREA");
+    }
+    if (
+      this.store.tables.some(
+        (table) =>
+          table.restaurantId === input.restaurantId &&
+          table.floorAreaId !== input.floorAreaId &&
+          table.label === label,
+      )
+    ) {
+      throw new Error("TABLE_LABEL_TAKEN_OTHER_ZONE");
+    }
+
     const position = nextTablePosition(input.floorAreaId, this.store);
     const table: RestaurantTable = {
       id: randomUUID(),
@@ -169,6 +191,7 @@ export class DemoFloorRepository implements FloorRepository {
       guestName: input.guestName,
       partySize: input.partySize,
       occasion: input.occasion,
+      scheduledAt: input.scheduledAt,
     };
     return structuredClone(table);
   }

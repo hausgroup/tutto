@@ -31,6 +31,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
+import { PageHeaderActions } from "@/components/layout/page-header-actions";
 import { Plus, Trash2 } from "lucide-react";
 
 export function StaffPanel({
@@ -53,13 +54,7 @@ export function StaffPanel({
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <p className="text-sm text-muted-foreground">
-          {snapshot.members.length} miembro(s)
-          {snapshot.invitations.length > 0
-            ? ` · ${snapshot.invitations.length} invitación(es) pendiente(s)`
-            : null}
-        </p>
+      <PageHeaderActions>
         <Dialog open={inviteOpen} onOpenChange={setInviteOpen}>
           <DialogTrigger asChild>
             <Button size="sm">
@@ -140,7 +135,14 @@ export function StaffPanel({
             </DialogFooter>
           </DialogContent>
         </Dialog>
-      </div>
+      </PageHeaderActions>
+
+      <p className="text-sm text-muted-foreground">
+        {snapshot.members.length} miembro(s)
+        {snapshot.invitations.length > 0
+          ? ` · ${snapshot.invitations.length} invitación(es) pendiente(s)`
+          : null}
+      </p>
 
       <Card>
         <CardHeader className="pb-3">

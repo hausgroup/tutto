@@ -10,7 +10,6 @@ import { getSalonMeta } from "@/lib/floor/status";
 import {
   chairStatusClass,
   operationalTableSurfaceClass,
-  statusBarClass,
 } from "@/lib/floor/operational-table-style";
 import type { RestaurantTable } from "@/lib/floor/types";
 
@@ -52,7 +51,6 @@ export function FloorTableVisual({
   const surface = getSalonTableSurfaceStyle();
   const surfaceClass = operationalTableSurfaceClass(table.status);
   const chairClass = chairStatusClass(table.status);
-  const barClass = statusBarClass(table.status);
 
   return (
     <div
@@ -90,19 +88,10 @@ export function FloorTableVisual({
           surfaceClass,
         )}
       >
-        <span
-          className={cn(
-            "absolute top-[12%] bottom-[12%] left-0 rounded-full",
-            barClass,
-            compact ? "w-0.5" : "w-1",
-          )}
-          aria-hidden
-        />
-
         <div
           className={cn(
             "flex min-h-0 flex-1 flex-col items-start justify-between",
-            compact ? "gap-0.5 py-1.5 pl-2.5 pr-1.5" : "gap-1 py-2.5 pl-3.5 pr-2",
+            compact ? "gap-0.5 px-1.5 py-1.5" : "gap-1 px-2 py-2.5",
           )}
         >
           <div className="min-w-0 space-y-0.5">

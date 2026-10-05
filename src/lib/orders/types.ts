@@ -41,6 +41,8 @@ export type OrderItem = {
   /** Bar drinks: serve now vs with the meal. */
   serveTiming: DrinkServeTiming | null;
   notes: string | null;
+  /** Set when the line is sent from the POS draft to kitchen/bar. */
+  sentAt?: string | null;
   modifiers: OrderItemModifier[];
 };
 

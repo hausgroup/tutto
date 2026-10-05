@@ -8,6 +8,7 @@ import {
   Coffee,
   CupSoda,
   IceCream,
+  Pencil,
   Plus,
   Soup,
   UtensilsCrossed,
@@ -16,8 +17,14 @@ import {
 import {
   createCategoryAction,
   createProductAction,
+  setProductActiveAction,
+  updateProductAction,
 } from "@/lib/catalog/actions";
-import type { CatalogSnapshot, PreparationStation } from "@/lib/catalog/types";
+import type {
+  CatalogSnapshot,
+  PreparationStation,
+  Product,
+} from "@/lib/catalog/types";
 import { invalidatePosCatalogCache } from "@/lib/pos/client-cache";
 import { formatCurrency } from "@/lib/utils/money";
 import { Button } from "@/components/ui/button";
@@ -39,13 +46,9 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import {
-  COSY_ACCENT,
-  PageIntro,
-  SoftChip,
-  SoftSection,
-  cosyPastel,
-} from "@/components/ui/soft";
+import { Switch } from "@/components/ui/switch";
+import { PageHeaderActions } from "@/components/layout/page-header-actions";
+import { SoftSection, cosyPastel } from "@/components/ui/soft";
 import { cn } from "@/lib/utils";
 
 const CATEGORY_ICONS: LucideIcon[] = [
@@ -64,7 +67,7 @@ const TAX_OPTIONS = [
 
 const STATION_OPTIONS: { value: PreparationStation; label: string }[] = [
   { value: "kitchen", label: "Cocina" },
-  { value: "bar", label: "Barra" },
+  { value: "bar", label: "Bar" },
   { value: "dessert", label: "Postres" },
   { value: "other", label: "Otra" },
 ];
@@ -90,8 +93,11 @@ export function MenuCatalog({
   const [snapshot, setSnapshot] = useState(initialSnapshot);
   const [productOpen, setProductOpen] = useState(false);
   const [categoryOpen, setCategoryOpen] = useState(false);
+  const [editingProduct, setEditingProduct] = useState<Product | null>(null);
 
   const [categoryName, setCategoryName] = useState("");
+  const [categoryStation, setCategoryStation] =
+    useState<PreparationStation>("kitchen");
   const [name, setName] = useState("");
   const [sku, setSku] = useState("");
   const [categoryId, setCategoryId] = useState(
@@ -100,6 +106,7 @@ export function MenuCatalog({
   const [priceMinor, setPriceMinor] = useState(0);
   const [taxRateBps, setTaxRateBps] = useState(800);
   const [station, setStation] = useState<PreparationStation>("kitchen");
+  const [visibleOnMenu, setVisibleOnMenu] = useState(true);
 
   useEffect(() => {
     setSnapshot(initialSnapshot);
@@ -110,13 +117,60 @@ export function MenuCatalog({
     [snapshot.categories],
   );
 
+  function stationForCategory(catId: string): PreparationStation {
+    return (
+      categories.find((category) => category.id === catId)
+        ?.preparationStation ?? "kitchen"
+    );
+  }
+
+  function resetCategoryForm() {
+    setCategoryName("");
+    setCategoryStation("kitchen");
+  }
+
   function resetProductForm() {
+    setEditingProduct(null);
     setName("");
     setSku("");
     setPriceMinor(0);
     setTaxRateBps(800);
-    setStation("kitchen");
-    setCategoryId(categories[0]?.id ?? "");
+    const defaultCategoryId = categories[0]?.id ?? "";
+    setCategoryId(defaultCategoryId);
+    setStation(
+      defaultCategoryId
+        ? stationForCategory(defaultCategoryId)
+        : "kitchen",
+    );
+    setVisibleOnMenu(true);
+  }
+
+  function onProductCategoryChange(catId: string) {
+    setCategoryId(catId);
+    if (!editingProduct) {
+      setStation(stationForCategory(catId));
+    }
+  }
+
+  function openProductEditor(product: Product) {
+    setEditingProduct(product);
+    setName(product.name);
+    setSku(product.sku ?? "");
+    setCategoryId(product.categoryId ?? categories[0]?.id ?? "");
+    setPriceMinor(product.priceMinor);
+    setTaxRateBps(product.taxRateBps);
+    setStation(product.preparationStation);
+    setVisibleOnMenu(product.isActive);
+    setProductOpen(true);
+  }
+
+  function replaceProductInSnapshot(product: Product) {
+    setSnapshot((current) => ({
+      ...current,
+      products: current.products.map((item) =>
+        item.id === product.id ? product : item,
+      ),
+    }));
   }
 
   function createCategory() {
@@ -125,6 +179,7 @@ export function MenuCatalog({
       const result = await createCategoryAction({
         restaurantId,
         name: categoryName.trim(),
+        preparationStation: categoryStation,
       });
       if (result.error) {
         toast.error(result.error);
@@ -139,59 +194,112 @@ export function MenuCatalog({
       }
       invalidatePosCatalogCache();
       toast.success("Categoría creada");
-      setCategoryName("");
+      resetCategoryForm();
       setCategoryOpen(false);
       router.refresh();
     });
   }
 
-  function createProduct() {
+  function saveProduct() {
     if (!name.trim() || !categoryId) return;
     startTransition(async () => {
-      const result = await createProductAction({
-        restaurantId,
-        categoryId,
-        name: name.trim(),
-        sku: sku.trim() || undefined,
-        priceMinor,
-        costMinor: 0,
-        taxRateBps,
-        preparationStation: station,
-        trackInventory: false,
-      });
-      if (result.error) {
-        toast.error(result.error);
-        return;
+      if (editingProduct) {
+        const result = await updateProductAction({
+          restaurantId,
+          productId: editingProduct.id,
+          categoryId,
+          name: name.trim(),
+          description: editingProduct.description ?? undefined,
+          sku: sku.trim() || undefined,
+          priceMinor,
+          costMinor: editingProduct.costMinor,
+          taxRateBps,
+          preparationStation: station,
+          trackInventory: editingProduct.trackInventory,
+          isActive: visibleOnMenu,
+        });
+        if (result.error) {
+          toast.error(result.error);
+          return;
+        }
+        if (result.product) {
+          replaceProductInSnapshot(result.product);
+        }
+        invalidatePosCatalogCache();
+        toast.success("Producto actualizado");
+      } else {
+        const result = await createProductAction({
+          restaurantId,
+          categoryId,
+          name: name.trim(),
+          sku: sku.trim() || undefined,
+          priceMinor,
+          costMinor: 0,
+          taxRateBps,
+          preparationStation: station,
+          trackInventory: false,
+        });
+        if (result.error) {
+          toast.error(result.error);
+          return;
+        }
+        if (result.product) {
+          setSnapshot((current) => ({
+            ...current,
+            products: [...current.products, result.product!],
+          }));
+        }
+        invalidatePosCatalogCache();
+        toast.success("Producto agregado al menú");
       }
-      if (result.product) {
-        setSnapshot((current) => ({
-          ...current,
-          products: [...current.products, result.product!],
-        }));
-      }
-      invalidatePosCatalogCache();
-      toast.success("Producto agregado al menú");
       resetProductForm();
       setProductOpen(false);
       router.refresh();
     });
   }
 
+  function toggleProductOnMenu(product: Product, onMenu: boolean) {
+    startTransition(async () => {
+      const result = await setProductActiveAction({
+        restaurantId,
+        productId: product.id,
+        isActive: onMenu,
+      });
+      if (result.error) {
+        toast.error(result.error);
+        return;
+      }
+      if (result.product) {
+        replaceProductInSnapshot(result.product);
+      }
+      invalidatePosCatalogCache();
+      toast.message(onMenu ? "Visible en el menú" : "Oculto del menú");
+      router.refresh();
+    });
+  }
+
   return (
     <div className="space-y-8">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <PageIntro>
-          Menú, precios, impuestos y estaciones de preparación.
-        </PageIntro>
-        <div className="flex flex-wrap gap-2">
+      <PageHeaderActions>
+        <div className="flex flex-wrap items-center justify-end gap-2">
           <Button asChild variant="outline" size="sm">
             <Link href="/recipes">Recetas</Link>
           </Button>
           {canManage ? (
             <>
-              <Dialog open={categoryOpen} onOpenChange={setCategoryOpen}>
+              <Dialog
+                open={categoryOpen}
+                onOpenChange={(open) => {
+                  setCategoryOpen(open);
+                  if (!open) resetCategoryForm();
+                }}
+              >
                 <DialogTrigger asChild>
-                  <Button variant="outline" size="sm">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => resetCategoryForm()}
+                  >
                     <Plus className="size-4" />
                     Categoría
                   </Button>
@@ -200,15 +308,44 @@ export function MenuCatalog({
                   <DialogHeader>
                     <DialogTitle>Nueva categoría</DialogTitle>
                   </DialogHeader>
-                  <div className="space-y-2 py-2">
-                    <Label htmlFor="category-name">Nombre</Label>
-                    <Input
-                      id="category-name"
-                      value={categoryName}
-                      onChange={(event) => setCategoryName(event.target.value)}
-                      placeholder="Ej. Entradas"
-                      autoFocus
-                    />
+                  <div className="grid gap-3 py-2">
+                    <div className="space-y-2">
+                      <Label htmlFor="category-name">Nombre</Label>
+                      <Input
+                        id="category-name"
+                        value={categoryName}
+                        onChange={(event) => setCategoryName(event.target.value)}
+                        placeholder="Ej. Entradas"
+                        autoFocus
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Estación de pedidos</Label>
+                      <Select
+                        value={categoryStation}
+                        onValueChange={(value) =>
+                          setCategoryStation(value as PreparationStation)
+                        }
+                      >
+                        <SelectTrigger>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {STATION_OPTIONS.map((option) => (
+                            <SelectItem
+                              key={option.value}
+                              value={option.value}
+                            >
+                              {option.label}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <p className="text-xs text-muted-foreground">
+                        Los productos nuevos en esta categoría usarán esta
+                        estación por defecto (Cocina, Bar, etc.).
+                      </p>
+                    </div>
                   </div>
                   <DialogFooter>
                     <Button
@@ -226,18 +363,24 @@ export function MenuCatalog({
                 open={productOpen}
                 onOpenChange={(open) => {
                   setProductOpen(open);
-                  if (open) resetProductForm();
+                  if (!open) resetProductForm();
                 }}
               >
                 <DialogTrigger asChild>
-                  <Button variant="outline" size="sm">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => resetProductForm()}
+                  >
                     <Plus className="size-4" />
                     Producto
                   </Button>
                 </DialogTrigger>
                 <DialogContent>
                   <DialogHeader>
-                    <DialogTitle>Agregar al menú</DialogTitle>
+                    <DialogTitle>
+                      {editingProduct ? "Editar producto" : "Agregar al menú"}
+                    </DialogTitle>
                   </DialogHeader>
                   {categories.length === 0 ? (
                     <p className="py-2 text-sm text-muted-foreground">
@@ -259,7 +402,7 @@ export function MenuCatalog({
                         <Label>Categoría</Label>
                         <Select
                           value={categoryId}
-                          onValueChange={setCategoryId}
+                          onValueChange={onProductCategoryChange}
                         >
                           <SelectTrigger>
                             <SelectValue placeholder="Elige categoría" />
@@ -341,6 +484,24 @@ export function MenuCatalog({
                           placeholder="BRG-001"
                         />
                       </div>
+                      {editingProduct ? (
+                        <div className="flex items-center justify-between gap-3 rounded-xl border border-border px-3 py-2.5">
+                          <div>
+                            <p className="text-sm font-medium">En el menú</p>
+                            <p className="text-xs text-muted-foreground">
+                              {visibleOnMenu
+                                ? "Visible en POS y pedidos"
+                                : "Oculto; no aparece al tomar pedidos"}
+                            </p>
+                          </div>
+                          <Switch
+                            checked={visibleOnMenu}
+                            onCheckedChange={setVisibleOnMenu}
+                            disabled={pending}
+                            aria-label="Mostrar en el menú"
+                          />
+                        </div>
+                      ) : null}
                     </div>
                   )}
                   <DialogFooter>
@@ -352,9 +513,9 @@ export function MenuCatalog({
                         !name.trim() ||
                         !categoryId
                       }
-                      onClick={createProduct}
+                      onClick={saveProduct}
                     >
-                      Agregar producto
+                      {editingProduct ? "Guardar cambios" : "Agregar producto"}
                     </Button>
                   </DialogFooter>
                 </DialogContent>
@@ -362,7 +523,7 @@ export function MenuCatalog({
             </>
           ) : null}
         </div>
-      </div>
+      </PageHeaderActions>
 
       <SoftSection title="Categorías">
         {categories.length === 0 ? (
@@ -390,6 +551,7 @@ export function MenuCatalog({
                       {category.name}
                     </p>
                     <p className="mt-0.5 text-xs opacity-70">
+                      {stationLabel(category.preparationStation)} ·{" "}
                       {count} {count === 1 ? "ítem" : "ítems"}
                     </p>
                   </div>
@@ -404,13 +566,9 @@ export function MenuCatalog({
         const products = snapshot.products.filter(
           (p) => p.categoryId === category.id,
         );
+        if (products.length === 0) return null;
         return (
           <SoftSection key={category.id} title={category.name}>
-            {products.length === 0 ? (
-              <p className="text-sm text-muted-foreground">
-                Sin productos en esta categoría.
-              </p>
-            ) : (
               <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-4">
                 {products.map((product) => (
                   <div
@@ -422,35 +580,59 @@ export function MenuCatalog({
                         : "bg-muted/60 text-muted-foreground ring-1 ring-border",
                     )}
                   >
-                    <div>
-                      <p className="text-[11px] text-muted-foreground">
-                        Pedidos → {stationLabel(product.preparationStation)}
-                      </p>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-start justify-between gap-2">
+                        <p className="min-w-0 text-[11px] text-muted-foreground">
+                          {stationLabel(product.preparationStation)}
+                        </p>
+                        {canManage ? (
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            className="-mt-1 -mr-1 h-7 shrink-0 px-2 text-xs"
+                            onClick={() => openProductEditor(product)}
+                          >
+                            <Pencil className="size-3.5" />
+                            Editar
+                          </Button>
+                        ) : null}
+                      </div>
                       <p className="mt-2 text-base font-semibold leading-snug">
                         {product.name}
                       </p>
                       <p className="mt-1 text-sm tabular-nums text-muted-foreground">
                         {formatCurrency(product.priceMinor)}
                       </p>
-                    </div>
-                    <div className="mt-3 flex items-center justify-between gap-2">
-                      <span className="truncate text-[11px] text-muted-foreground">
+                      <p className="mt-2 truncate text-[11px] text-muted-foreground">
                         {product.sku ?? "Sin SKU"}
-                      </span>
-                      <SoftChip
-                        active={product.isActive}
-                        className={cn(
-                          !product.isActive && "opacity-70",
-                          product.isActive && COSY_ACCENT,
-                        )}
-                      >
-                        {product.isActive ? "Activo" : "Inactivo"}
-                      </SoftChip>
+                      </p>
                     </div>
+                    {canManage ? (
+                      <div
+                        className="-mx-4 mt-3 flex items-center justify-between gap-2 border-t border-border/60 px-4 pt-2"
+                      >
+                        <Label
+                          htmlFor={`menu-visible-${product.id}`}
+                          className="text-[11px] font-normal text-muted-foreground"
+                        >
+                          En el menú
+                        </Label>
+                        <Switch
+                          id={`menu-visible-${product.id}`}
+                          size="sm"
+                          checked={product.isActive}
+                          disabled={pending}
+                          onCheckedChange={(checked) =>
+                            toggleProductOnMenu(product, checked)
+                          }
+                          aria-label={`${product.name}, visible en el menú`}
+                        />
+                      </div>
+                    ) : null}
                   </div>
                 ))}
               </div>
-            )}
           </SoftSection>
         );
       })}

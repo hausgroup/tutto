@@ -5,6 +5,8 @@ import { resolveAuthContext } from "@/lib/auth/resolve-context";
 import {
   createCategorySchema,
   createProductSchema,
+  setProductActiveSchema,
+  updateProductSchema,
 } from "@/lib/catalog/schemas";
 import { catalogService } from "@/lib/catalog/service";
 import type { Product, ProductCategory } from "@/lib/catalog/types";
@@ -25,6 +27,8 @@ function mapError(error: unknown): CatalogActionState {
         return { error: "Restaurante no encontrado." };
       case "CATEGORY_NOT_FOUND":
         return { error: "Categoría no encontrada." };
+      case "PRODUCT_NOT_FOUND":
+        return { error: "Producto no encontrado." };
       case "UNAUTHORIZED":
         return { error: "Debes iniciar sesión." };
       default:
@@ -62,6 +66,34 @@ export async function createProductAction(
     const context = await resolveAuthContext();
     const parsed = createProductSchema.parse(input);
     const product = await catalogService.createProduct(context, parsed);
+    revalidateCatalog();
+    return { ok: true, product };
+  } catch (error) {
+    return mapError(error);
+  }
+}
+
+export async function updateProductAction(
+  input: unknown,
+): Promise<CatalogActionState> {
+  try {
+    const context = await resolveAuthContext();
+    const parsed = updateProductSchema.parse(input);
+    const product = await catalogService.updateProduct(context, parsed);
+    revalidateCatalog();
+    return { ok: true, product };
+  } catch (error) {
+    return mapError(error);
+  }
+}
+
+export async function setProductActiveAction(
+  input: unknown,
+): Promise<CatalogActionState> {
+  try {
+    const context = await resolveAuthContext();
+    const parsed = setProductActiveSchema.parse(input);
+    const product = await catalogService.setProductActive(context, parsed);
     revalidateCatalog();
     return { ok: true, product };
   } catch (error) {

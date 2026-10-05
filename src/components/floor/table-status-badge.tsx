@@ -1,7 +1,17 @@
-import { cn } from "@/lib/utils";
-import { getSalonMeta } from "@/lib/floor/status";
+import { Badge, type BadgeTone } from "@/components/arc/badge/badge";
+import { getSalonMeta, toSalonState } from "@/lib/floor/status";
 import type { TableStatus } from "@/lib/floor/types";
-import { Badge } from "@/components/ui/badge";
+
+function salonBadgeTone(status: TableStatus): BadgeTone {
+  switch (toSalonState(status)) {
+    case "free":
+      return "success";
+    case "reserved":
+      return "warning";
+    case "occupied":
+      return "neutral";
+  }
+}
 
 export function TableStatusBadge({
   status,
@@ -15,11 +25,11 @@ export function TableStatusBadge({
 
   return (
     <Badge
-      variant="outline"
-      className={cn("gap-1 font-normal", meta.badgeClass, className)}
+      tone={salonBadgeTone(status)}
+      size="sm"
+      icon={<Icon className="size-3.5" aria-hidden />}
+      className={className}
     >
-      <span className={cn("size-2 rounded-full", meta.accentClass)} aria-hidden />
-      <Icon className="size-3.5" aria-hidden />
       {meta.label}
     </Badge>
   );

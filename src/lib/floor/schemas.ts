@@ -64,4 +64,5 @@ export const tableReservationSchema = z.object({
   guestName: z.string().trim().min(1).max(120),
   partySize: z.number().int().min(1).max(99),
   occasion: z.string().trim().min(1).max(120),
+  scheduledAt: z.string().datetime(),
 });

@@ -54,6 +54,7 @@ export type ReserveTableInput = {
   guestName: string;
   partySize: number;
   occasion: string;
+  scheduledAt: string;
 };
 
 export interface FloorRepository {

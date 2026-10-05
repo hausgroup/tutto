@@ -23,8 +23,8 @@ import type {
   TableStatus,
 } from "@/lib/floor/types";
 
-const TABLE_SELECT =
-  "id, restaurant_id, floor_area_id, label, capacity, status, pos_x, pos_y, width, height, rotation_deg, shape, is_active, reservation_guest_name, reservation_party_size, reservation_occasion";
+/** `*` keeps reads working before optional columns (e.g. reservation_scheduled_at) are migrated. */
+const TABLE_SELECT = "*";
 
 type AreaRow = {
   id: string;
@@ -50,6 +50,7 @@ type TableRow = {
   reservation_guest_name: string | null;
   reservation_party_size: number | null;
   reservation_occasion: string | null;
+  reservation_scheduled_at?: string | null;
 };
 
 function mapReservation(row: TableRow): TableReservation | null {
@@ -64,6 +65,7 @@ function mapReservation(row: TableRow): TableReservation | null {
     guestName: row.reservation_guest_name,
     partySize: Number(row.reservation_party_size),
     occasion: row.reservation_occasion,
+    scheduledAt: row.reservation_scheduled_at ?? null,
   };
 }
 
@@ -180,6 +182,7 @@ export class SupabaseFloorRepository implements FloorRepository {
 
   async createTable(input: CreateTableInput): Promise<RestaurantTable> {
     const supabase = await createSupabaseServerClient();
+    const label = input.label.trim();
 
     const { data: existingRows, error: existingError } = await supabase
       .from("restaurant_tables")
@@ -190,6 +193,25 @@ export class SupabaseFloorRepository implements FloorRepository {
     if (existingError) throw existingError;
 
     const existing = ((existingRows ?? []) as TableRow[]).map(mapTable);
+    if (existing.some((table) => table.label === label)) {
+      throw new Error("TABLE_LABEL_TAKEN_IN_AREA");
+    }
+
+    const { data: sameLabelRows, error: labelError } = await supabase
+      .from("restaurant_tables")
+      .select("floor_area_id")
+      .eq("restaurant_id", input.restaurantId)
+      .eq("label", label);
+
+    if (labelError) throw labelError;
+
+    const otherZone = (sameLabelRows ?? []).some(
+      (row) => row.floor_area_id !== input.floorAreaId,
+    );
+    if (otherZone) {
+      throw new Error("TABLE_LABEL_TAKEN_OTHER_ZONE");
+    }
+
     const cell = findNextEmptyGridCell(existing);
     const position = gridCellToPosition(cell);
 
@@ -273,6 +295,7 @@ export class SupabaseFloorRepository implements FloorRepository {
               reservation_guest_name: null,
               reservation_party_size: null,
               reservation_occasion: null,
+              reservation_scheduled_at: null,
             },
       )
       .eq("id", id)
@@ -311,6 +334,7 @@ export class SupabaseFloorRepository implements FloorRepository {
         reservation_guest_name: input.guestName,
         reservation_party_size: input.partySize,
         reservation_occasion: input.occasion,
+        reservation_scheduled_at: input.scheduledAt,
       })
       .eq("id", input.tableId)
       .eq("restaurant_id", input.restaurantId)

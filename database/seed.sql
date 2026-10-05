@@ -85,9 +85,23 @@ insert into public.restaurant_tables (
   ('44444444-4444-4444-8444-444444444403', '22222222-2222-4222-8222-222222222222', '33333333-3333-4333-8333-333333333302', 'T1', 4, 'available', 40, 40, 96, 72)
 on conflict (id) do nothing;
 
-insert into public.product_categories (id, restaurant_id, name, sort_order) values
-  ('55555555-5555-4555-8555-555555555501', '22222222-2222-4222-8222-222222222222', 'Hamburguesas', 1),
-  ('55555555-5555-4555-8555-555555555502', '22222222-2222-4222-8222-222222222222', 'Bebidas', 2)
+insert into public.product_categories (
+  id, restaurant_id, name, sort_order, preparation_station
+) values
+  (
+    '55555555-5555-4555-8555-555555555501',
+    '22222222-2222-4222-8222-222222222222',
+    'Hamburguesas',
+    1,
+    'kitchen'
+  ),
+  (
+    '55555555-5555-4555-8555-555555555502',
+    '22222222-2222-4222-8222-222222222222',
+    'Bebidas',
+    2,
+    'bar'
+  )
 on conflict (id) do nothing;
 
 insert into public.products (

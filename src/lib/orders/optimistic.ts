@@ -1,17 +1,29 @@
-import { calculateLineItem, sumOrderTotals } from "@/lib/orders/calculate";
+import { calculateLineItem } from "@/lib/orders/calculate";
+import { recalculateOrderBillTotals } from "@/lib/orders/bill-segments";
 import type { CatalogSnapshot } from "@/lib/catalog/types";
 import {
   canMoveBarUnitToWithMeal,
+  canRemoveLineFromPosTicket,
   catalogProductIsPosBarDrink,
   deriveOrderStatusFromItems,
   findWithMealLineToMerge,
   initialItemStatusForServeTiming,
   linesMatchForQuantityAdjust,
-  pendingLinesMatch,
   resolveServeTiming,
 } from "@/lib/orders/drink-serve";
 import { consolidateWithMealOrderLines } from "@/lib/orders/consolidate-lines";
 import type { DrinkServeTiming, Order, OrderItem } from "@/lib/orders/types";
+
+export type PendingQtyAdjust = {
+  productId: string;
+  delta: number;
+  serveTiming?: DrinkServeTiming;
+};
+
+export type PendingMealMove = {
+  productId: string;
+  count: number;
+};
 
 function dedupeOrderItemsById(items: OrderItem[]): OrderItem[] {
   const byId = new Map<string, OrderItem>();
@@ -22,19 +34,9 @@ function dedupeOrderItemsById(items: OrderItem[]): OrderItem[] {
 }
 
 function withRecalculatedTotals(order: Order): Order {
-  const totals = sumOrderTotals(
-    order.items.map((item) => ({
-      lineSubtotalMinor: item.lineSubtotalMinor,
-      lineTaxMinor: item.lineTaxMinor,
-      lineTotalMinor: item.lineTotalMinor,
-    })),
-  );
-  return {
-    ...order,
-    subtotalMinor: totals.subtotalMinor,
-    taxMinor: totals.taxMinor,
-    totalMinor: totals.totalMinor - order.discountMinor,
-  };
+  const next = { ...order };
+  recalculateOrderBillTotals(next);
+  return next;
 }
 
 function recalcLine(item: OrderItem, quantity: number): OrderItem {
@@ -56,6 +58,64 @@ function recalcLine(item: OrderItem, quantity: number): OrderItem {
   };
 }
 
+function optimisticLineId(
+  productId: string,
+  serveTiming: DrinkServeTiming | null,
+): string {
+  const pool = serveTiming === "with_meal" ? "with_meal" : "enseguida";
+  return `optimistic-${productId}-${pool}`;
+}
+
+function applyPendingMealMovesOnOrder(
+  order: Order,
+  catalog: CatalogSnapshot,
+  pendingMealMoves: PendingMealMove[],
+): Order {
+  let next = order;
+  for (const { productId, count } of pendingMealMoves) {
+    if (count <= 0) continue;
+    const product = catalog.products.find((p) => p.id === productId);
+    for (let n = 0; n < count; n++) {
+      const line = next.items.find(
+        (item) =>
+          item.productId === productId &&
+          canMoveBarUnitToWithMeal(item, product, catalog.categories),
+      );
+      if (!line) break;
+      next = applyOptimisticMoveBarUnitToWithMeal(next, line.id, catalog);
+    }
+  }
+  return next;
+}
+
+/**
+ * Trust the server snapshot, then re-apply outbound qty adjusts and Comida moves
+ * still waiting in the client queue.
+ */
+export function reconcileOrderAfterServer(
+  server: Order,
+  catalog: CatalogSnapshot,
+  pendingAdjusts: PendingQtyAdjust[],
+  pendingMealMoves: PendingMealMove[] = [],
+): Order {
+  let order: Order = {
+    ...server,
+    items: consolidateWithMealOrderLines([...server.items]),
+  };
+  for (const entry of pendingAdjusts) {
+    if (entry.delta === 0) continue;
+    order = applyOptimisticQuantityDelta(
+      order,
+      catalog,
+      entry.productId,
+      entry.delta,
+      entry.serveTiming,
+    );
+  }
+  order = applyPendingMealMovesOnOrder(order, catalog, pendingMealMoves);
+  return order;
+}
+
 /** Instant client-side quantity change while the server catches up. */
 export function applyOptimisticQuantityDelta(
   order: Order,
@@ -71,9 +131,12 @@ export function applyOptimisticQuantityDelta(
   const resolvedTiming = product
     ? resolveServeTiming(product, catalog.categories, serveTiming)
     : null;
+  const poolId = product ? optimisticLineId(productId, resolvedTiming) : null;
 
-  const pendingIndex = items.findIndex((item) =>
-    linesMatchForQuantityAdjust(item, productId, resolvedTiming, delta),
+  const pendingIndex = items.findIndex(
+    (item) =>
+      (poolId != null && item.id === poolId) ||
+      linesMatchForQuantityAdjust(item, productId, resolvedTiming, delta),
   );
 
   if (delta > 0) {
@@ -92,7 +155,7 @@ export function applyOptimisticQuantityDelta(
         catalogProductIsPosBarDrink(product, catalog.categories),
       );
       items.push({
-        id: `optimistic-${productId}-${Date.now()}`,
+        id: poolId ?? `optimistic-${productId}-${Date.now()}`,
         orderId: order.id,
         productId: product.id,
         productName: product.name,
@@ -107,6 +170,7 @@ export function applyOptimisticQuantityDelta(
         serveTiming: resolvedTiming,
         notes: null,
         modifiers: [],
+        sentAt: null,
       });
     }
     return withRecalculatedTotals({
@@ -114,7 +178,7 @@ export function applyOptimisticQuantityDelta(
       items: dedupeOrderItemsById(
         consolidateWithMealOrderLines(items),
       ),
-      status: "open",
+      status: deriveOrderStatusFromItems(items, order.status),
     });
   }
 
@@ -136,7 +200,23 @@ export function applyOptimisticQuantityDelta(
 
   return withRecalculatedTotals({
     ...order,
-    items: dedupeOrderItemsById(items),
+    items: dedupeOrderItemsById(consolidateWithMealOrderLines(items)),
+  });
+}
+
+/** Remove one ticket line by id (trash control). */
+export function applyOptimisticRemoveOrderLine(
+  order: Order,
+  itemId: string,
+): Order {
+  const item = order.items.find((line) => line.id === itemId);
+  if (!item || !canRemoveLineFromPosTicket(item)) return order;
+
+  const items = order.items.filter((line) => line.id !== itemId);
+  return withRecalculatedTotals({
+    ...order,
+    items: dedupeOrderItemsById(consolidateWithMealOrderLines(items)),
+    status: deriveOrderStatusFromItems(items, order.status),
   });
 }
 
@@ -181,7 +261,7 @@ export function applyOptimisticMoveBarUnitToWithMeal(
       modifierDeltaMinor: modifierDelta,
     });
     items.push({
-      id: `optimistic-meal-${source.productId}-${Date.now()}`,
+      id: optimisticLineId(source.productId, "with_meal"),
       orderId: order.id,
       productId: source.productId,
       productName: source.productName,
@@ -196,6 +276,7 @@ export function applyOptimisticMoveBarUnitToWithMeal(
       serveTiming: "with_meal",
       notes: source.notes,
       modifiers: source.modifiers.map((m) => ({ ...m })),
+      sentAt: null,
     });
   }
 
@@ -204,20 +285,4 @@ export function applyOptimisticMoveBarUnitToWithMeal(
     items: dedupeOrderItemsById(consolidateWithMealOrderLines(items)),
     status: deriveOrderStatusFromItems(items, order.status),
   });
-}
-
-/** After server sync, trust server lines (deduped) to avoid duplicate rows. */
-export function mergeServerOrderItems(local: Order, server: Order): Order {
-  const byId = new Map<string, OrderItem>();
-  for (const item of server.items) {
-    byId.set(item.id, item);
-  }
-  return {
-    ...local,
-    items: consolidateWithMealOrderLines([...byId.values()]),
-    subtotalMinor: server.subtotalMinor,
-    taxMinor: server.taxMinor,
-    totalMinor: server.totalMinor,
-    status: server.status,
-  };
 }

@@ -36,11 +36,6 @@ export default async function StaffPage() {
   const snapshot = await staffService.getSnapshot(context, restaurantId);
 
   return (
-    <div className="space-y-6">
-      <p className="text-sm text-muted-foreground">
-        Invita colaboradores, asigna roles y activa o desactiva accesos.
-      </p>
-      <StaffPanel snapshot={snapshot} currentUserId={context.userId} />
-    </div>
+    <StaffPanel snapshot={snapshot} currentUserId={context.userId} />
   );
 }
