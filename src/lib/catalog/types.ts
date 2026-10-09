@@ -1,3 +1,5 @@
+import type { AllergenId } from "@/lib/catalog/allergens";
+
 export type PreparationStation = "kitchen" | "bar" | "dessert" | "other";
 
 export type ProductCategory = {
@@ -15,6 +17,7 @@ export type Product = {
   categoryId: string | null;
   name: string;
   description: string | null;
+  allergens: AllergenId[];
   sku: string | null;
   priceMinor: number;
   costMinor: number;

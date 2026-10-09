@@ -65,4 +65,20 @@ export const tableReservationSchema = z.object({
   partySize: z.number().int().min(1).max(99),
   occasion: z.string().trim().min(1).max(120),
   scheduledAt: z.string().datetime(),
+  groupId: z.string().uuid().nullable().optional(),
+});
+
+export const cancelTableReservationSchema = z.object({
+  restaurantId: z.string().uuid(),
+  tableId: z.string().uuid(),
+});
+
+export const tableReservationsBatchSchema = z.object({
+  tableIds: z.array(z.string().uuid()).min(1).max(24),
+  restaurantId: z.string().uuid(),
+  guestName: z.string().trim().min(1).max(120),
+  partySize: z.number().int().min(1).max(99),
+  occasion: z.string().trim().min(1).max(120),
+  scheduledAt: z.string().datetime(),
+  groupId: z.string().uuid().nullable().optional(),
 });

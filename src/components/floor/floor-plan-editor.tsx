@@ -76,6 +76,12 @@ export function FloorPlanEditor({
     [snapshot.areas],
   );
 
+  useEffect(() => {
+    if (!areas.some((area) => area.id === activeAreaId)) {
+      setActiveAreaId(areas[0]?.id ?? "");
+    }
+  }, [areas, activeAreaId]);
+
   const tablesForArea = useMemo(
     () => snapshot.tables.filter((table) => table.floorAreaId === activeAreaId),
     [snapshot.tables, activeAreaId],

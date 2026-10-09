@@ -37,16 +37,63 @@ export function patchCachedFloorTableReservation(
   tableId: string,
   reservation: FloorBootstrap["snapshot"]["tables"][number]["reservation"],
 ) {
-  if (!cached) return;
+  patchCachedFloorTablesReservations([{ tableId, reservation }]);
+}
+
+export function patchCachedFloorClearReservations(tableIds: string[]) {
+  if (!cached || tableIds.length === 0) return;
+  const cleared = new Set(tableIds);
   cached = {
     ...cached,
     snapshot: {
       ...cached.snapshot,
       tables: cached.snapshot.tables.map((table) =>
-        table.id === tableId
-          ? { ...table, status: "reserved", reservation }
+        cleared.has(table.id)
+          ? { ...table, status: "available", reservation: null }
           : table,
       ),
+    },
+  };
+}
+
+/** Clears one reservation, including all tables in the same group. */
+export function patchCachedFloorCancelReservation(
+  tableId: string,
+  groupId: string | null,
+) {
+  if (!cached) return;
+  cached = {
+    ...cached,
+    snapshot: {
+      ...cached.snapshot,
+      tables: cached.snapshot.tables.map((table) => {
+        const inGroup =
+          table.id === tableId ||
+          (groupId != null && table.reservation?.groupId === groupId);
+        if (!inGroup) return table;
+        return { ...table, status: "available", reservation: null };
+      }),
+    },
+  };
+}
+
+export function patchCachedFloorTablesReservations(
+  updates: {
+    tableId: string;
+    reservation: FloorBootstrap["snapshot"]["tables"][number]["reservation"];
+  }[],
+) {
+  if (!cached || updates.length === 0) return;
+  const byId = new Map(updates.map((u) => [u.tableId, u.reservation]));
+  cached = {
+    ...cached,
+    snapshot: {
+      ...cached.snapshot,
+      tables: cached.snapshot.tables.map((table) => {
+        const reservation = byId.get(table.id);
+        if (reservation === undefined) return table;
+        return { ...table, status: "reserved", reservation };
+      }),
     },
   };
 }

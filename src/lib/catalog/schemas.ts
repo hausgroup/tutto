@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { normalizeAllergenIds } from "@/lib/catalog/allergens";
 
 export const PREPARATION_STATIONS = [
   "kitchen",
@@ -23,6 +24,10 @@ export const createProductSchema = z.object({
     .max(500)
     .optional()
     .transform((value) => (value ? value : null)),
+  allergens: z
+    .array(z.string())
+    .optional()
+    .transform((value) => normalizeAllergenIds(value ?? [])),
   sku: z
     .string()
     .trim()

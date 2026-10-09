@@ -19,6 +19,8 @@ export type TableReservation = {
   occasion: string;
   /** ISO-8601 instant for when guests are expected. */
   scheduledAt: string | null;
+  /** Shared across tables for the same booking. */
+  groupId: string | null;
 };
 
 export type FloorArea = {

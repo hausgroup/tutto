@@ -2,7 +2,11 @@
 
 import { revalidatePath } from "next/cache";
 import { resolveAuthContext, getDefaultRestaurantId } from "@/lib/auth/resolve-context";
-import { tableReservationSchema } from "@/lib/floor/schemas";
+import {
+  cancelTableReservationSchema,
+  tableReservationSchema,
+  tableReservationsBatchSchema,
+} from "@/lib/floor/schemas";
 import { floorService } from "@/lib/floor/service";
 import { orderService } from "@/lib/orders/service";
 import { inventoryService } from "@/lib/inventory/service";
@@ -31,10 +35,13 @@ function mapError(error: unknown): PosActionState {
       case "INVALID_PAYMENT_AMOUNT":
         return { error: "Ingresa un monto válido." };
       case "TABLE_HAS_ACTIVE_ORDER":
+      case "TABLE_HAS_OPEN_BILL":
         return {
           error:
-            "Hay productos en la cuenta. Envía o elimina el pedido antes de reservar.",
+            "Hay productos en la cuenta. Cierra o vacía el pedido antes de cancelar la reserva.",
         };
+      case "RESERVATION_NOT_FOUND":
+        return { error: "No hay una reserva activa en esta mesa." };
       case "TABLE_NOT_AVAILABLE":
         return { error: "Esta mesa no está disponible para reservar." };
       case "TABLE_NOT_FOUND":
@@ -174,20 +181,64 @@ export async function reserveTableFromPosAction(input: {
   partySize: number;
   occasion: string;
   scheduledAt: string;
+  groupId?: string | null;
+}): Promise<PosActionState> {
+  return reserveTablesFromPosAction({
+    tableIds: [input.tableId],
+    guestName: input.guestName,
+    partySize: input.partySize,
+    occasion: input.occasion,
+    scheduledAt: input.scheduledAt,
+    groupId: input.groupId,
+  });
+}
+
+export async function cancelTableReservationAction(input: {
+  tableId: string;
 }): Promise<PosActionState> {
   try {
     const context = await resolveAuthContext();
     const restaurantId = getDefaultRestaurantId(context);
     if (!restaurantId) throw new Error("RESTAURANT_NOT_FOUND");
-    const parsed = tableReservationSchema.parse({
+    const parsed = cancelTableReservationSchema.parse({
       restaurantId,
       tableId: input.tableId,
+    });
+    await floorService.cancelReservationForTable(
+      context,
+      parsed.restaurantId,
+      parsed.tableId,
+    );
+    revalidateFloorSurfaces();
+    revalidatePath("/reservations");
+    return { ok: true };
+  } catch (error) {
+    return mapError(error);
+  }
+}
+
+export async function reserveTablesFromPosAction(input: {
+  tableIds: string[];
+  guestName: string;
+  partySize: number;
+  occasion: string;
+  scheduledAt: string;
+  groupId?: string | null;
+}): Promise<PosActionState> {
+  try {
+    const context = await resolveAuthContext();
+    const restaurantId = getDefaultRestaurantId(context);
+    if (!restaurantId) throw new Error("RESTAURANT_NOT_FOUND");
+    const parsed = tableReservationsBatchSchema.parse({
+      restaurantId,
+      tableIds: input.tableIds,
       guestName: input.guestName,
       partySize: input.partySize,
       occasion: input.occasion,
       scheduledAt: input.scheduledAt,
+      groupId: input.groupId,
     });
-    await floorService.reserveTable(context, parsed);
+    await floorService.reserveTables(context, parsed);
     revalidateFloorSurfaces();
     return { ok: true };
   } catch (error) {

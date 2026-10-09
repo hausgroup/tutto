@@ -10,6 +10,7 @@ import {
   type CreateTableInput,
   type FloorRepository,
   type ReserveTableInput,
+  type ReserveTablesInput,
   type UpdateFloorAreaInput,
   type UpdateTableLayoutInput,
   type UpdateTablePropertiesInput,
@@ -51,6 +52,7 @@ type TableRow = {
   reservation_party_size: number | null;
   reservation_occasion: string | null;
   reservation_scheduled_at?: string | null;
+  reservation_group_id?: string | null;
 };
 
 function mapReservation(row: TableRow): TableReservation | null {
@@ -66,6 +68,7 @@ function mapReservation(row: TableRow): TableReservation | null {
     partySize: Number(row.reservation_party_size),
     occasion: row.reservation_occasion,
     scheduledAt: row.reservation_scheduled_at ?? null,
+    groupId: row.reservation_group_id ?? null,
   };
 }
 
@@ -296,6 +299,7 @@ export class SupabaseFloorRepository implements FloorRepository {
               reservation_party_size: null,
               reservation_occasion: null,
               reservation_scheduled_at: null,
+              reservation_group_id: null,
             },
       )
       .eq("id", id)
@@ -308,41 +312,98 @@ export class SupabaseFloorRepository implements FloorRepository {
   }
 
   async reserveTable(input: ReserveTableInput): Promise<RestaurantTable> {
+    const [table] = await this.reserveTables({
+      tableIds: [input.tableId],
+      restaurantId: input.restaurantId,
+      guestName: input.guestName,
+      partySize: input.partySize,
+      occasion: input.occasion,
+      scheduledAt: input.scheduledAt,
+      groupId: input.groupId ?? crypto.randomUUID(),
+    });
+    return table;
+  }
+
+  async reserveTables(input: ReserveTablesInput): Promise<RestaurantTable[]> {
     const supabase = await createSupabaseServerClient();
-    const { data: existing, error: fetchError } = await supabase
+    const uniqueIds = [...new Set(input.tableIds)];
+    const groupId = input.groupId ?? crypto.randomUUID();
+
+    const { data: rows, error: fetchError } = await supabase
       .from("restaurant_tables")
       .select(TABLE_SELECT)
-      .eq("id", input.tableId)
       .eq("restaurant_id", input.restaurantId)
-      .maybeSingle();
+      .in("id", uniqueIds);
 
     if (fetchError) throw fetchError;
-    if (!existing) throw new Error("TABLE_NOT_FOUND");
-
-    const current = mapTable(existing as TableRow);
-    if (
-      current.status !== "available" &&
-      current.status !== "reserved"
-    ) {
-      throw new Error("TABLE_NOT_AVAILABLE");
+    if ((rows ?? []).length !== uniqueIds.length) {
+      throw new Error("TABLE_NOT_FOUND");
     }
 
-    const { data, error } = await supabase
-      .from("restaurant_tables")
-      .update({
-        status: "reserved",
-        reservation_guest_name: input.guestName,
-        reservation_party_size: input.partySize,
-        reservation_occasion: input.occasion,
-        reservation_scheduled_at: input.scheduledAt,
-      })
-      .eq("id", input.tableId)
-      .eq("restaurant_id", input.restaurantId)
-      .select(TABLE_SELECT)
-      .single();
+    for (const row of rows ?? []) {
+      const current = mapTable(row as TableRow);
+      if (
+        current.status !== "available" &&
+        current.status !== "reserved"
+      ) {
+        throw new Error("TABLE_NOT_AVAILABLE");
+      }
+    }
 
-    if (error) throw error;
-    return mapTable(data as TableRow);
+    const updated: RestaurantTable[] = [];
+    for (const tableId of uniqueIds) {
+      const { data, error } = await supabase
+        .from("restaurant_tables")
+        .update({
+          status: "reserved",
+          reservation_guest_name: input.guestName,
+          reservation_party_size: input.partySize,
+          reservation_occasion: input.occasion,
+          reservation_scheduled_at: input.scheduledAt,
+          reservation_group_id: groupId,
+        })
+        .eq("id", tableId)
+        .eq("restaurant_id", input.restaurantId)
+        .select(TABLE_SELECT)
+        .single();
+
+      if (error) throw error;
+      updated.push(mapTable(data as TableRow));
+    }
+
+    return updated;
+  }
+
+  async cancelReservationForTable(
+    restaurantId: string,
+    tableId: string,
+  ): Promise<RestaurantTable[]> {
+    const supabase = await createSupabaseServerClient();
+    const table = await this.getTableById(tableId, restaurantId);
+    if (!table) throw new Error("TABLE_NOT_FOUND");
+    if (table.status !== "reserved" || !table.reservation) {
+      throw new Error("RESERVATION_NOT_FOUND");
+    }
+
+    const groupId = table.reservation.groupId;
+    let tableIds = [tableId];
+
+    if (groupId) {
+      const { data, error } = await supabase
+        .from("restaurant_tables")
+        .select("id")
+        .eq("restaurant_id", restaurantId)
+        .eq("reservation_group_id", groupId);
+      if (error) throw error;
+      tableIds = (data ?? []).map((row) => row.id as string);
+    }
+
+    const updated: RestaurantTable[] = [];
+    for (const id of tableIds) {
+      const row = await this.updateTableStatus(id, restaurantId, "available");
+      updated.push(row);
+    }
+    return updated;
   }
 
   async deleteTable(id: string, restaurantId: string): Promise<void> {

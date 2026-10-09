@@ -24,7 +24,6 @@ export default async function FloorEditorPage() {
   return (
     <div className="flex min-h-[calc(100dvh-7.5rem)] flex-col gap-3 md:min-h-[calc(100dvh-8.5rem)]">
       <FloorPlanEditor
-        key={`${restaurantId}-${snapshot.tables.length}-${snapshot.areas.length}`}
         initialSnapshot={snapshot}
         restaurantId={restaurantId}
         className="min-h-0 flex-1"

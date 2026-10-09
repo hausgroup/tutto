@@ -49,10 +49,14 @@ function mapPostgresFailure(error: unknown): FloorActionState | null {
   const code = errorCode(error);
   const message = errorMessage(error);
 
-  if (code === "PGRST204" || message.includes("reservation_scheduled_at")) {
+  if (
+    code === "PGRST204" ||
+    message.includes("reservation_scheduled_at") ||
+    message.includes("reservation_group_id")
+  ) {
     return {
       error:
-        "Falta aplicar la migración reservation_scheduled_at en Supabase.",
+        "Falta aplicar las migraciones de reservas en Supabase (reservation_scheduled_at, reservation_group_id).",
     };
   }
 

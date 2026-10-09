@@ -10,6 +10,7 @@ import {
   ChefHat,
   CircleDollarSign,
   MessageSquareWarning,
+  CalendarDays,
   type LucideIcon,
 } from "lucide-react";
 
@@ -23,6 +24,7 @@ export type AppNavItem = {
 export const operationNav: AppNavItem[] = [
   { title: "Panel", href: "/dashboard", icon: LayoutDashboard },
   { title: "Salón", href: "/floor", icon: UtensilsCrossed },
+  { title: "Reservas", href: "/reservations", icon: CalendarDays },
   { title: "Menú", href: "/products", icon: Package },
   { title: "Inventario", href: "/inventory", icon: Warehouse },
   { title: "Recetas", href: "/recipes", icon: ChefHat },

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useTransition } from "react";
+import { useEffect, useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { Button } from "@/components/arc/button/button";
@@ -10,7 +10,7 @@ import {
 } from "@/components/arc/dialog/dialog";
 import dialogStyles from "@/components/arc/dialog/dialog.module.css";
 import { TableReservationFormFields } from "@/components/floor/table-reservation-form-fields";
-import { reserveTableFromPosAction } from "@/lib/orders/actions";
+import { reserveTablesFromPosAction } from "@/lib/orders/actions";
 import {
   defaultReservationDateTime,
   isoToLocalParts,
@@ -20,7 +20,7 @@ import type { RestaurantTable, TableReservation } from "@/lib/floor/types";
 import {
   patchCachedFloorBillTotal,
   patchCachedFloorPendingBarDrinks,
-  patchCachedFloorTableReservation,
+  patchCachedFloorTablesReservations,
 } from "@/lib/floor/client-cache";
 import { clearCachedPosBoot } from "@/lib/pos/client-cache";
 import { isSoftDatePickerPanelTarget } from "@/components/ui/date-picker";
@@ -38,16 +38,16 @@ function keepPortaledDatePicker(event: {
 }
 
 export function TableReservationDialog({
-  table,
+  tables,
   open,
   onOpenChange,
   onReserved,
   navigateToFloorOnCreate = false,
 }: {
-  table: RestaurantTable | null;
+  tables: RestaurantTable[];
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onReserved?: (table: RestaurantTable) => void;
+  onReserved?: (tables: RestaurantTable[]) => void;
   /** After a new reservation from POS, return to salón. */
   navigateToFloorOnCreate?: boolean;
 }) {
@@ -59,16 +59,33 @@ export function TableReservationDialog({
   const [timeHm, setTimeHm] = useState("");
   const [pending, startTransition] = useTransition();
 
-  const activeReservation = table?.reservation ?? null;
+  const primaryTable = tables[0] ?? null;
+  const activeReservation = primaryTable?.reservation ?? null;
+  const existingGroupId = useMemo(() => {
+    const ids = tables
+      .map((t) => t.reservation?.groupId)
+      .filter((id): id is string => Boolean(id));
+    if (ids.length === 0) return null;
+    return ids[0] ?? null;
+  }, [tables]);
+
+  const tableLabels = useMemo(
+    () =>
+      [...tables]
+        .sort((a, b) => a.label.localeCompare(b.label, "es", { numeric: true }))
+        .map((t) => t.label),
+    [tables],
+  );
 
   useEffect(() => {
-    if (!open || !table) return;
-    if (table.reservation) {
-      setGuestName(table.reservation.guestName);
-      setPartySize(String(table.reservation.partySize));
-      setOccasion(table.reservation.occasion);
-      if (table.reservation.scheduledAt) {
-        const parts = isoToLocalParts(table.reservation.scheduledAt);
+    if (!open || tables.length === 0) return;
+    const seed = primaryTable?.reservation;
+    if (seed) {
+      setGuestName(seed.guestName);
+      setPartySize(String(seed.partySize));
+      setOccasion(seed.occasion);
+      if (seed.scheduledAt) {
+        const parts = isoToLocalParts(seed.scheduledAt);
         setDateYmd(parts.dateYmd);
         setTimeHm(parts.timeHm);
       } else {
@@ -84,10 +101,10 @@ export function TableReservationDialog({
     const defaults = defaultReservationDateTime();
     setDateYmd(defaults.dateYmd);
     setTimeHm(defaults.timeHm);
-  }, [open, table]);
+  }, [open, tables, primaryTable]);
 
   function submitReserve() {
-    if (!table) return;
+    if (tables.length === 0) return;
     const trimmedName = guestName.trim();
     const trimmedOccasion = occasion.trim();
     const size = Number.parseInt(partySize, 10);
@@ -109,15 +126,19 @@ export function TableReservationDialog({
     }
 
     const scheduledAt = localPartsToIso(dateYmd, timeHm);
+    const tableIds = tables.map((t) => t.id);
+
+    const groupId = existingGroupId ?? crypto.randomUUID();
 
     startTransition(async () => {
       const wasUpdate = Boolean(activeReservation);
-      const result = await reserveTableFromPosAction({
-        tableId: table.id,
+      const result = await reserveTablesFromPosAction({
+        tableIds,
         guestName: trimmedName,
         partySize: size,
         occasion: trimmedOccasion,
         scheduledAt,
+        groupId,
       });
       if (result.error) {
         toast.error(result.error);
@@ -129,37 +150,44 @@ export function TableReservationDialog({
         partySize: size,
         occasion: trimmedOccasion,
         scheduledAt,
+        groupId,
       };
-      patchCachedFloorTableReservation(table.id, reservation);
-      patchCachedFloorBillTotal(table.id, 0);
-      patchCachedFloorPendingBarDrinks(table.id, false);
 
-      const updated: RestaurantTable = {
-        ...table,
-        status: "reserved",
+      const cacheUpdates = tableIds.map((tableId) => ({
+        tableId,
         reservation,
-      };
+      }));
+      patchCachedFloorTablesReservations(cacheUpdates);
+      for (const tableId of tableIds) {
+        patchCachedFloorBillTotal(tableId, 0);
+        patchCachedFloorPendingBarDrinks(tableId, false);
+      }
+
+      const updated = tables.map((table) => ({
+        ...table,
+        status: "reserved" as const,
+        reservation: { ...reservation, groupId: reservation.groupId },
+      }));
       onReserved?.(updated);
       onOpenChange(false);
-      if (!wasUpdate && navigateToFloorOnCreate) {
-        clearCachedPosBoot(table.id);
-        toast.success(`${table.label} reservada para ${trimmedName}.`);
+
+      if (!wasUpdate && navigateToFloorOnCreate && primaryTable) {
+        clearCachedPosBoot(primaryTable.id);
         router.push("/floor");
-        return;
       }
-      toast.success(
-        wasUpdate
-          ? "Reserva actualizada."
-          : `${table.label} reservada para ${trimmedName}.`,
-      );
     });
   }
 
-  if (!table) return null;
+  if (tables.length === 0) return null;
 
-  const title = activeReservation
-    ? `Reserva — ${table.label}`
-    : `Reservar ${table.label}`;
+  const title =
+    tables.length === 1
+      ? activeReservation
+        ? `Reserva — ${tables[0]!.label}`
+        : `Reservar ${tables[0]!.label}`
+      : activeReservation
+        ? `Reserva — ${tables.length} mesas`
+        : `Reservar ${tables.length} mesas`;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -169,6 +197,16 @@ export function TableReservationDialog({
         onPointerDownOutside={keepPortaledDatePicker}
         onInteractOutside={keepPortaledDatePicker}
       >
+        <div className="mb-4 flex flex-wrap gap-1.5">
+          {tableLabels.map((label) => (
+            <span
+              key={label}
+              className="rounded-full border border-[var(--border)] bg-[var(--surface-muted)] px-2.5 py-0.5 text-xs font-medium"
+            >
+              Mesa {label}
+            </span>
+          ))}
+        </div>
         <TableReservationFormFields
           idPrefix="salon-reserve"
           guestName={guestName}

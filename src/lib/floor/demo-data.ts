@@ -40,6 +40,7 @@ export function createDemoFloorSnapshot(): FloorSnapshot {
           scheduledAt: new Date(
             Date.now() + 2 * 60 * 60 * 1000,
           ).toISOString(),
+          groupId: "demo-reservation-group-1",
         },
       },
       {

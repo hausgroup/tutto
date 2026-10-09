@@ -1,3 +1,4 @@
+import { normalizeAllergenIds } from "@/lib/catalog/allergens";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import type {
   CatalogSnapshot,
@@ -29,6 +30,7 @@ type ProductRow = {
   is_active: boolean;
   track_inventory: boolean;
   preparation_station: PreparationStation;
+  allergens?: string[] | null;
 };
 
 type ModifierRow = {
@@ -59,6 +61,7 @@ function mapProduct(row: ProductRow): Product {
     categoryId: row.category_id,
     name: row.name,
     description: row.description,
+    allergens: normalizeAllergenIds(row.allergens ?? []),
     sku: row.sku,
     priceMinor: Number(row.price_minor),
     costMinor: Number(row.cost_minor),
@@ -96,7 +99,7 @@ export async function fetchCatalogSnapshot(
     supabase
       .from("products")
       .select(
-        "id, restaurant_id, category_id, name, description, sku, price_minor, cost_minor, tax_rate_bps, is_active, track_inventory, preparation_station",
+        "id, restaurant_id, category_id, name, description, allergens, sku, price_minor, cost_minor, tax_rate_bps, is_active, track_inventory, preparation_station",
       )
       .eq("restaurant_id", restaurantId)
       .order("name"),
@@ -128,7 +131,7 @@ export async function fetchProductById(
   const { data, error } = await supabase
     .from("products")
     .select(
-      "id, restaurant_id, category_id, name, description, sku, price_minor, cost_minor, tax_rate_bps, is_active, track_inventory, preparation_station",
+      "id, restaurant_id, category_id, name, description, allergens, sku, price_minor, cost_minor, tax_rate_bps, is_active, track_inventory, preparation_station",
     )
     .eq("restaurant_id", restaurantId)
     .eq("id", productId)
@@ -187,6 +190,7 @@ export async function insertProduct(input: {
   categoryId: string;
   name: string;
   description: string | null;
+  allergens: string[];
   sku: string | null;
   priceMinor: number;
   costMinor: number;
@@ -202,6 +206,7 @@ export async function insertProduct(input: {
       category_id: input.categoryId,
       name: input.name,
       description: input.description,
+      allergens: input.allergens,
       sku: input.sku,
       price_minor: input.priceMinor,
       cost_minor: input.costMinor,
@@ -211,7 +216,7 @@ export async function insertProduct(input: {
       is_active: true,
     })
     .select(
-      "id, restaurant_id, category_id, name, description, sku, price_minor, cost_minor, tax_rate_bps, is_active, track_inventory, preparation_station",
+      "id, restaurant_id, category_id, name, description, allergens, sku, price_minor, cost_minor, tax_rate_bps, is_active, track_inventory, preparation_station",
     )
     .single();
 
@@ -220,7 +225,7 @@ export async function insertProduct(input: {
 }
 
 const productSelect =
-  "id, restaurant_id, category_id, name, description, sku, price_minor, cost_minor, tax_rate_bps, is_active, track_inventory, preparation_station";
+  "id, restaurant_id, category_id, name, description, allergens, sku, price_minor, cost_minor, tax_rate_bps, is_active, track_inventory, preparation_station";
 
 export async function updateProduct(input: {
   restaurantId: string;
@@ -228,6 +233,7 @@ export async function updateProduct(input: {
   categoryId: string;
   name: string;
   description: string | null;
+  allergens: string[];
   sku: string | null;
   priceMinor: number;
   costMinor: number;
@@ -243,6 +249,7 @@ export async function updateProduct(input: {
       category_id: input.categoryId,
       name: input.name,
       description: input.description,
+      allergens: input.allergens,
       sku: input.sku,
       price_minor: input.priceMinor,
       cost_minor: input.costMinor,

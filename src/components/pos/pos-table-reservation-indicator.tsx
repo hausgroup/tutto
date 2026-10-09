@@ -15,9 +15,13 @@ import {
 export function PosTableReservationIndicator({
   reservation,
   onEdit,
+  onCancel,
+  cancelPending = false,
 }: {
   reservation: TableReservation;
   onEdit?: () => void;
+  onCancel?: () => void;
+  cancelPending?: boolean;
 }) {
   return (
     <DropdownMenu>
@@ -45,10 +49,24 @@ export function PosTableReservationIndicator({
             {reservation.partySize} personas · {reservation.occasion}
           </p>
         </DropdownMenuLabel>
-        {onEdit ? (
+        {onEdit || onCancel ? (
           <>
             <DropdownMenuSeparator />
-            <DropdownMenuItem onSelect={onEdit}>Editar reserva</DropdownMenuItem>
+            {onEdit ? (
+              <DropdownMenuItem onSelect={onEdit}>Editar reserva</DropdownMenuItem>
+            ) : null}
+            {onCancel ? (
+              <DropdownMenuItem
+                disabled={cancelPending}
+                className="text-destructive focus:text-destructive"
+                onSelect={(event) => {
+                  event.preventDefault();
+                  onCancel();
+                }}
+              >
+                Cancelar reserva
+              </DropdownMenuItem>
+            ) : null}
           </>
         ) : null}
       </DropdownMenuContent>

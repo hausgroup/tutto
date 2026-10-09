@@ -156,4 +156,56 @@ export const floorService = {
     );
     return getRepository().reserveTable(input);
   },
+
+  async reserveTables(
+    context: AuthContext,
+    input: import("@/lib/floor/repository").ReserveTablesInput,
+  ) {
+    const { orderService } = await import("@/lib/orders/service");
+    requirePermission(context, PERMISSIONS.ORDERS_MODIFY, input.restaurantId);
+    resolveRestaurantId(context, input.restaurantId);
+    for (const tableId of [...new Set(input.tableIds)]) {
+      await orderService.voidEmptyOpenOrderForTable(
+        context,
+        input.restaurantId,
+        tableId,
+      );
+    }
+    return getRepository().reserveTables(input);
+  },
+
+  async cancelReservationForTable(
+    context: AuthContext,
+    restaurantId: string,
+    tableId: string,
+  ) {
+    const { orderService } = await import("@/lib/orders/service");
+    requirePermission(context, PERMISSIONS.ORDERS_MODIFY, restaurantId);
+    resolveRestaurantId(context, restaurantId);
+
+    const table = await getRepository().getTableById(tableId, restaurantId);
+    if (!table || table.status !== "reserved") {
+      throw new Error("RESERVATION_NOT_FOUND");
+    }
+
+    const groupId = table.reservation?.groupId;
+    const snapshot = await getRepository().getSnapshot(restaurantId);
+    const tableIds = groupId
+      ? snapshot.tables
+          .filter((t) => t.reservation?.groupId === groupId)
+          .map((t) => t.id)
+      : [tableId];
+
+    const billTotals = await orderService.getOpenBillTotalsByTableId(
+      context,
+      restaurantId,
+    );
+    for (const id of tableIds) {
+      if ((billTotals[id] ?? 0) > 0) {
+        throw new Error("TABLE_HAS_OPEN_BILL");
+      }
+    }
+
+    return getRepository().cancelReservationForTable(restaurantId, tableId);
+  },
 };

@@ -24,6 +24,7 @@ import { TableReservationDialog } from "@/components/floor/table-reservation-dia
 import { PosTableReservationIndicator } from "@/components/pos/pos-table-reservation-indicator";
 import {
   adjustOrderProductQuantityAction,
+  cancelTableReservationAction,
   moveBarDrinkUnitToWithMealAction,
   removeOrderLineAction,
   sendOrderAction,
@@ -63,6 +64,7 @@ import {
 } from "@/lib/pos/client-cache";
 import {
   patchCachedFloorBillTotal,
+  patchCachedFloorCancelReservation,
   patchCachedFloorPendingBarDrinks,
   patchCachedFloorTableStatus,
   warmFloorBoot,
@@ -145,6 +147,7 @@ export function MobilePosView({
     tableReservation ?? null,
   );
   const [checkoutPending, startTransition] = useTransition();
+  const [cancelReservationPending, startCancelReservation] = useTransition();
 
   useEffect(() => {
     setActiveReservation(tableReservation ?? null);
@@ -169,6 +172,24 @@ export function MobilePosView({
       reservation: activeReservation,
     };
   }, [order.tableId, order.restaurantId, tableLabel, activeReservation]);
+
+  function handleCancelReservation() {
+    if (!order.tableId || !activeReservation) return;
+    const tableId = order.tableId;
+    const groupId = activeReservation.groupId;
+    startCancelReservation(async () => {
+      const result = await cancelTableReservationAction({ tableId });
+      if (result.error) {
+        toast.error(result.error);
+        return;
+      }
+      patchCachedFloorCancelReservation(tableId, groupId);
+      patchCachedFloorTableStatus(tableId, "available");
+      setActiveReservation(null);
+      void warmFloorBoot({ force: true });
+    });
+  }
+
   const syncQueue = useRef(Promise.resolve());
   /** Bumped on ticket edits that must ignore stale in-flight server snapshots. */
   const posSyncEpoch = useRef(0);
@@ -1121,6 +1142,8 @@ export function MobilePosView({
               <PosTableReservationIndicator
                 reservation={activeReservation}
                 onEdit={() => setReserveDialogOpen(true)}
+                onCancel={handleCancelReservation}
+                cancelPending={cancelReservationPending}
               />
             ) : null}
           </div>
@@ -1226,10 +1249,12 @@ export function MobilePosView({
       />
 
       <TableReservationDialog
-        table={tableForReserve}
+        tables={tableForReserve ? [tableForReserve] : []}
         open={reserveDialogOpen}
         onOpenChange={setReserveDialogOpen}
-        onReserved={(updated) => setActiveReservation(updated.reservation)}
+        onReserved={(updated) =>
+          setActiveReservation(updated[0]?.reservation ?? null)
+        }
       />
     </div>
   );

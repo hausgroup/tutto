@@ -55,6 +55,18 @@ export type ReserveTableInput = {
   partySize: number;
   occasion: string;
   scheduledAt: string;
+  groupId?: string | null;
+};
+
+export type ReserveTablesInput = {
+  tableIds: string[];
+  restaurantId: string;
+  guestName: string;
+  partySize: number;
+  occasion: string;
+  scheduledAt: string;
+  /** Preserve when editing an existing group. */
+  groupId?: string | null;
 };
 
 export interface FloorRepository {
@@ -74,6 +86,11 @@ export interface FloorRepository {
     status: TableStatus,
   ): Promise<RestaurantTable>;
   reserveTable(input: ReserveTableInput): Promise<RestaurantTable>;
+  reserveTables(input: ReserveTablesInput): Promise<RestaurantTable[]>;
+  cancelReservationForTable(
+    restaurantId: string,
+    tableId: string,
+  ): Promise<RestaurantTable[]>;
   deleteTable(id: string, restaurantId: string): Promise<void>;
   getTableById(id: string, restaurantId: string): Promise<RestaurantTable | null>;
 }

@@ -1,5 +1,6 @@
 "use client";
 
+import type { ReactNode } from "react";
 import Link from "next/link";
 import { useEffect, useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
@@ -20,6 +21,10 @@ import {
   setProductActiveAction,
   updateProductAction,
 } from "@/lib/catalog/actions";
+import {
+  MENU_ALLERGENS,
+  type AllergenId,
+} from "@/lib/catalog/allergens";
 import type {
   CatalogSnapshot,
   PreparationStation,
@@ -47,6 +52,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
+import { Textarea } from "@/components/ui/textarea";
 import { PageHeaderActions } from "@/components/layout/page-header-actions";
 import { SoftSection, cosyPastel } from "@/components/ui/soft";
 import { cn } from "@/lib/utils";
@@ -71,6 +77,37 @@ const STATION_OPTIONS: { value: PreparationStation; label: string }[] = [
   { value: "dessert", label: "Postres" },
   { value: "other", label: "Otra" },
 ];
+
+/** Match `Input` height and surface in product form. */
+const MENU_SELECT_TRIGGER_CLASS =
+  "h-11 w-full rounded-2xl border-0 bg-muted shadow-none ring-1 ring-border focus:ring-2 focus:ring-ring data-[size=default]:h-11 dark:bg-muted";
+
+const MENU_TEXTAREA_CLASS =
+  "min-h-[5rem] resize-none rounded-2xl border-0 bg-muted ring-1 ring-border focus-visible:ring-2 focus-visible:ring-ring dark:bg-muted";
+
+function MenuFormField({
+  label,
+  htmlFor,
+  children,
+  className,
+}: {
+  label: string;
+  htmlFor?: string;
+  children: ReactNode;
+  className?: string;
+}) {
+  return (
+    <div className={cn("flex flex-col gap-1.5", className)}>
+      <Label
+        htmlFor={htmlFor}
+        className="text-xs font-normal text-muted-foreground"
+      >
+        {label}
+      </Label>
+      {children}
+    </div>
+  );
+}
 
 function stationLabel(station: string) {
   return (
@@ -99,6 +136,10 @@ export function MenuCatalog({
   const [categoryStation, setCategoryStation] =
     useState<PreparationStation>("kitchen");
   const [name, setName] = useState("");
+  const [description, setDescription] = useState("");
+  const [selectedAllergens, setSelectedAllergens] = useState<AllergenId[]>(
+    [],
+  );
   const [sku, setSku] = useState("");
   const [categoryId, setCategoryId] = useState(
     initialSnapshot.categories[0]?.id ?? "",
@@ -132,6 +173,8 @@ export function MenuCatalog({
   function resetProductForm() {
     setEditingProduct(null);
     setName("");
+    setDescription("");
+    setSelectedAllergens([]);
     setSku("");
     setPriceMinor(0);
     setTaxRateBps(800);
@@ -155,6 +198,8 @@ export function MenuCatalog({
   function openProductEditor(product: Product) {
     setEditingProduct(product);
     setName(product.name);
+    setDescription(product.description ?? "");
+    setSelectedAllergens(product.allergens ?? []);
     setSku(product.sku ?? "");
     setCategoryId(product.categoryId ?? categories[0]?.id ?? "");
     setPriceMinor(product.priceMinor);
@@ -209,7 +254,8 @@ export function MenuCatalog({
           productId: editingProduct.id,
           categoryId,
           name: name.trim(),
-          description: editingProduct.description ?? undefined,
+          description: description.trim() || undefined,
+          allergens: selectedAllergens,
           sku: sku.trim() || undefined,
           priceMinor,
           costMinor: editingProduct.costMinor,
@@ -232,6 +278,8 @@ export function MenuCatalog({
           restaurantId,
           categoryId,
           name: name.trim(),
+          description: description.trim() || undefined,
+          allergens: selectedAllergens,
           sku: sku.trim() || undefined,
           priceMinor,
           costMinor: 0,
@@ -376,67 +424,69 @@ export function MenuCatalog({
                     Producto
                   </Button>
                 </DialogTrigger>
-                <DialogContent>
-                  <DialogHeader>
-                    <DialogTitle>
-                      {editingProduct ? "Editar producto" : "Agregar al menú"}
+                <DialogContent
+                  className="flex max-h-[min(92dvh,36rem)] flex-col gap-0 overflow-hidden p-0 sm:max-w-md"
+                >
+                  <DialogHeader className="border-b border-border/60 px-5 py-4 text-left">
+                    <DialogTitle className="text-base font-semibold">
+                      {editingProduct ? "Editar producto" : "Nuevo producto"}
                     </DialogTitle>
                   </DialogHeader>
                   {categories.length === 0 ? (
-                    <p className="py-2 text-sm text-muted-foreground">
-                      Crea una categoría primero para organizar el producto.
+                    <p className="px-5 py-4 text-sm text-muted-foreground">
+                      Crea una categoría primero.
                     </p>
                   ) : (
-                    <div className="grid gap-3 py-2">
-                      <div className="space-y-2">
-                        <Label htmlFor="product-name">Nombre</Label>
+                    <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-5 py-4">
+                      <MenuFormField label="Nombre" htmlFor="product-name">
                         <Input
                           id="product-name"
                           value={name}
                           onChange={(event) => setName(event.target.value)}
-                          placeholder="Ej. Classic Burger"
+                          placeholder="Classic Burger"
                           autoFocus
                         />
+                      </MenuFormField>
+
+                      <div className="grid gap-4 sm:grid-cols-2">
+                        <MenuFormField label="Categoría">
+                          <Select
+                            value={categoryId}
+                            onValueChange={onProductCategoryChange}
+                          >
+                            <SelectTrigger className={MENU_SELECT_TRIGGER_CLASS}>
+                              <SelectValue placeholder="Categoría" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {categories.map((category) => (
+                                <SelectItem
+                                  key={category.id}
+                                  value={category.id}
+                                >
+                                  {category.name}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </MenuFormField>
+                        <MenuFormField label="Precio (COP)" htmlFor="product-price">
+                          <MoneyInput
+                            id="product-price"
+                            value={priceMinor}
+                            onValueChange={setPriceMinor}
+                          />
+                        </MenuFormField>
                       </div>
-                      <div className="space-y-2">
-                        <Label>Categoría</Label>
-                        <Select
-                          value={categoryId}
-                          onValueChange={onProductCategoryChange}
-                        >
-                          <SelectTrigger>
-                            <SelectValue placeholder="Elige categoría" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {categories.map((category) => (
-                              <SelectItem
-                                key={category.id}
-                                value={category.id}
-                              >
-                                {category.name}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      </div>
-                      <div className="space-y-2">
-                        <Label htmlFor="product-price">Precio (COP)</Label>
-                        <MoneyInput
-                          id="product-price"
-                          value={priceMinor}
-                          onValueChange={setPriceMinor}
-                        />
-                      </div>
-                      <div className="grid grid-cols-2 gap-3">
-                        <div className="space-y-2">
-                          <Label>Impuesto</Label>
+
+                      <div className="grid gap-4 sm:grid-cols-3">
+                        <MenuFormField label="Impuesto">
                           <Select
                             value={String(taxRateBps)}
                             onValueChange={(value) =>
                               setTaxRateBps(Number(value))
                             }
                           >
-                            <SelectTrigger>
+                            <SelectTrigger className={MENU_SELECT_TRIGGER_CLASS}>
                               <SelectValue />
                             </SelectTrigger>
                             <SelectContent>
@@ -450,16 +500,15 @@ export function MenuCatalog({
                               ))}
                             </SelectContent>
                           </Select>
-                        </div>
-                        <div className="space-y-2">
-                          <Label>Estación</Label>
+                        </MenuFormField>
+                        <MenuFormField label="Estación">
                           <Select
                             value={station}
                             onValueChange={(value) =>
                               setStation(value as PreparationStation)
                             }
                           >
-                            <SelectTrigger>
+                            <SelectTrigger className={MENU_SELECT_TRIGGER_CLASS}>
                               <SelectValue />
                             </SelectTrigger>
                             <SelectContent>
@@ -473,40 +522,117 @@ export function MenuCatalog({
                               ))}
                             </SelectContent>
                           </Select>
-                        </div>
+                        </MenuFormField>
+                        <MenuFormField label="SKU" htmlFor="product-sku">
+                          <Input
+                            id="product-sku"
+                            value={sku}
+                            onChange={(event) => setSku(event.target.value)}
+                            placeholder="Opcional"
+                          />
+                        </MenuFormField>
                       </div>
-                      <div className="space-y-2">
-                        <Label htmlFor="product-sku">SKU (opcional)</Label>
-                        <Input
-                          id="product-sku"
-                          value={sku}
-                          onChange={(event) => setSku(event.target.value)}
-                          placeholder="BRG-001"
+
+                      <MenuFormField
+                        label="Descripción"
+                        htmlFor="product-description"
+                      >
+                        <Textarea
+                          id="product-description"
+                          value={description}
+                          onChange={(event) =>
+                            setDescription(event.target.value)
+                          }
+                          placeholder="Ingredientes y notas (opcional)"
+                          maxLength={500}
+                          rows={3}
+                          className={MENU_TEXTAREA_CLASS}
                         />
+                      </MenuFormField>
+
+                      <div className="space-y-2 border-t border-border/60 pt-4">
+                        <div className="flex items-center justify-between gap-2">
+                          <Label className="text-xs font-normal text-muted-foreground">
+                            Alérgenos
+                          </Label>
+                          {selectedAllergens.length > 0 ? (
+                            <span className="text-xs text-muted-foreground">
+                              {selectedAllergens.length}
+                            </span>
+                          ) : null}
+                        </div>
+                        <ul
+                          className="max-h-36 space-y-0.5 overflow-y-auto pr-1 sm:columns-2 sm:gap-x-4"
+                        >
+                          {MENU_ALLERGENS.map((allergen) => {
+                            const checked = selectedAllergens.includes(
+                              allergen.id,
+                            );
+                            return (
+                              <li
+                                key={allergen.id}
+                                className="break-inside-avoid py-0.5"
+                              >
+                                <label
+                                  className="flex cursor-pointer items-center gap-2 text-sm leading-snug"
+                                >
+                                  <input
+                                    type="checkbox"
+                                    className="size-3.5 shrink-0 rounded border-border"
+                                    checked={checked}
+                                    disabled={pending}
+                                    onChange={() => {
+                                      setSelectedAllergens((current) =>
+                                        checked
+                                          ? current.filter(
+                                              (id) => id !== allergen.id,
+                                            )
+                                          : [...current, allergen.id],
+                                      );
+                                    }}
+                                  />
+                                  <span className="text-foreground/90">
+                                    {allergen.label}
+                                  </span>
+                                </label>
+                              </li>
+                            );
+                          })}
+                        </ul>
                       </div>
+
                       {editingProduct ? (
-                        <div className="flex items-center justify-between gap-3 rounded-xl border border-border px-3 py-2.5">
-                          <div>
-                            <p className="text-sm font-medium">En el menú</p>
-                            <p className="text-xs text-muted-foreground">
-                              {visibleOnMenu
-                                ? "Visible en POS y pedidos"
-                                : "Oculto; no aparece al tomar pedidos"}
-                            </p>
-                          </div>
+                        <div className="flex items-center justify-between gap-3 border-t border-border/60 pt-4">
+                          <Label
+                            htmlFor="product-visible"
+                            className="text-xs font-normal text-muted-foreground"
+                          >
+                            Visible en el menú
+                          </Label>
                           <Switch
+                            id="product-visible"
                             checked={visibleOnMenu}
                             onCheckedChange={setVisibleOnMenu}
                             disabled={pending}
-                            aria-label="Mostrar en el menú"
                           />
                         </div>
                       ) : null}
                     </div>
                   )}
-                  <DialogFooter>
+                  <DialogFooter
+                    className="m-0 shrink-0 flex-row justify-end gap-2 rounded-none border-t border-border/60 bg-transparent px-5 py-3"
+                  >
                     <Button
-                      variant="outline"
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      disabled={pending}
+                      onClick={() => setProductOpen(false)}
+                    >
+                      Cancelar
+                    </Button>
+                    <Button
+                      size="sm"
                       disabled={
                         pending ||
                         categories.length === 0 ||
@@ -515,7 +641,7 @@ export function MenuCatalog({
                       }
                       onClick={saveProduct}
                     >
-                      {editingProduct ? "Guardar cambios" : "Agregar producto"}
+                      {editingProduct ? "Guardar" : "Agregar"}
                     </Button>
                   </DialogFooter>
                 </DialogContent>

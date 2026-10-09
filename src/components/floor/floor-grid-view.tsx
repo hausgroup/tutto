@@ -25,6 +25,7 @@ export function FloorGridView({
   onSelect,
   onWarm,
   selectedTableId,
+  highlightedTableIds,
   emptyLabel = "No hay mesas activas en esta área.",
   /** Show empty slots so the editor can place / move tables. */
   editable = false,
@@ -40,6 +41,7 @@ export function FloorGridView({
   onSelect?: (table: RestaurantTable) => void;
   onWarm?: (table: RestaurantTable) => void;
   selectedTableId?: string | null;
+  highlightedTableIds?: ReadonlySet<string> | string[];
   emptyLabel?: string;
   editable?: boolean;
   onEmptySlotClick?: (cell: GridCell) => void;
@@ -53,6 +55,13 @@ export function FloorGridView({
 }) {
   const [dragOverKey, setDragOverKey] = useState<string | null>(null);
   const [draggingId, setDraggingId] = useState<string | null>(null);
+
+  const highlighted = useMemo(() => {
+    if (!highlightedTableIds) return null;
+    return highlightedTableIds instanceof Set
+      ? highlightedTableIds
+      : new Set(highlightedTableIds);
+  }, [highlightedTableIds]);
 
   const layout = useMemo(
     () =>
@@ -171,7 +180,10 @@ export function FloorGridView({
                     table={table}
                     onSelect={onSelect}
                     onWarm={onWarm}
-                    selected={selectedTableId === table.id}
+                    selected={
+                      selectedTableId === table.id ||
+                      Boolean(highlighted?.has(table.id))
+                    }
                     allowInactive={allowInactive}
                     draggable={editable}
                     isDragging={draggingId === table.id}

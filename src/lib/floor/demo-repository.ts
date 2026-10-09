@@ -6,6 +6,7 @@ import {
   type CreateTableInput,
   type FloorRepository,
   type ReserveTableInput,
+  type ReserveTablesInput,
   type UpdateFloorAreaInput,
   type UpdateTableLayoutInput,
   type UpdateTablePropertiesInput,
@@ -177,23 +178,70 @@ export class DemoFloorRepository implements FloorRepository {
   }
 
   async reserveTable(input: ReserveTableInput): Promise<RestaurantTable> {
-    assertRestaurant(input.restaurantId);
-    const table = this.store.tables.find((item) => item.id === input.tableId);
-    if (!table) throw new Error("TABLE_NOT_FOUND");
-    if (
-      table.status !== "available" &&
-      table.status !== "reserved"
-    ) {
-      throw new Error("TABLE_NOT_AVAILABLE");
-    }
-    table.status = "reserved";
-    table.reservation = {
+    const [table] = await this.reserveTables({
+      tableIds: [input.tableId],
+      restaurantId: input.restaurantId,
       guestName: input.guestName,
       partySize: input.partySize,
       occasion: input.occasion,
       scheduledAt: input.scheduledAt,
-    };
-    return structuredClone(table);
+      groupId: input.groupId ?? crypto.randomUUID(),
+    });
+    return table;
+  }
+
+  async reserveTables(input: ReserveTablesInput): Promise<RestaurantTable[]> {
+    assertRestaurant(input.restaurantId);
+    const uniqueIds = [...new Set(input.tableIds)];
+    const groupId = input.groupId ?? crypto.randomUUID();
+    const updated: RestaurantTable[] = [];
+
+    for (const tableId of uniqueIds) {
+      const table = this.store.tables.find((item) => item.id === tableId);
+      if (!table) throw new Error("TABLE_NOT_FOUND");
+      if (
+        table.status !== "available" &&
+        table.status !== "reserved"
+      ) {
+        throw new Error("TABLE_NOT_AVAILABLE");
+      }
+      table.status = "reserved";
+      table.reservation = {
+        guestName: input.guestName,
+        partySize: input.partySize,
+        occasion: input.occasion,
+        scheduledAt: input.scheduledAt,
+        groupId,
+      };
+      updated.push(structuredClone(table));
+    }
+
+    return updated;
+  }
+
+  async cancelReservationForTable(
+    restaurantId: string,
+    tableId: string,
+  ): Promise<RestaurantTable[]> {
+    assertRestaurant(restaurantId);
+    const table = this.store.tables.find((item) => item.id === tableId);
+    if (!table) throw new Error("TABLE_NOT_FOUND");
+    if (table.status !== "reserved" || !table.reservation) {
+      throw new Error("RESERVATION_NOT_FOUND");
+    }
+
+    const groupId = table.reservation.groupId;
+    const tableIds = groupId
+      ? this.store.tables
+          .filter((item) => item.reservation?.groupId === groupId)
+          .map((item) => item.id)
+      : [tableId];
+
+    const updated: RestaurantTable[] = [];
+    for (const id of tableIds) {
+      updated.push(await this.updateTableStatus(id, restaurantId, "available"));
+    }
+    return updated;
   }
 
   async deleteTable(id: string, restaurantId: string): Promise<void> {

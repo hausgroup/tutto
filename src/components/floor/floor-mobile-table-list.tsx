@@ -12,6 +12,7 @@ export function FloorMobileTableList({
   billTotalsByTableId,
   pendingBarDrinksByTableId,
   openingTableId = null,
+  highlightedTableIds,
 }: {
   tables: RestaurantTable[];
   onSelect: (table: RestaurantTable) => void;
@@ -19,7 +20,14 @@ export function FloorMobileTableList({
   billTotalsByTableId?: Record<string, number>;
   pendingBarDrinksByTableId?: Record<string, true>;
   openingTableId?: string | null;
+  highlightedTableIds?: ReadonlySet<string> | string[];
 }) {
+  const highlighted =
+    highlightedTableIds instanceof Set
+      ? highlightedTableIds
+      : highlightedTableIds
+        ? new Set(highlightedTableIds)
+        : null;
   const ordered = useMemo(() => {
     const layout = layoutTablesOnGrid(tables);
     return [...layout.placed]
@@ -38,6 +46,7 @@ export function FloorMobileTableList({
             billTotalMinor={billTotalsByTableId?.[table.id]}
             pendingBarDrinks={Boolean(pendingBarDrinksByTableId?.[table.id])}
             busy={openingTableId === table.id}
+            selected={Boolean(highlighted?.has(table.id))}
           />
         </div>
       ))}

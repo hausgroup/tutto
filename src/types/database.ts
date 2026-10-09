@@ -165,6 +165,7 @@ export type Database = {
           reservation_party_size: number | null;
           reservation_occasion: string | null;
           reservation_scheduled_at: string | null;
+          reservation_group_id: string | null;
           created_at: string;
           updated_at: string;
         };
@@ -185,6 +186,7 @@ export type Database = {
           reservation_party_size?: number | null;
           reservation_occasion?: string | null;
           reservation_scheduled_at?: string | null;
+          reservation_group_id?: string | null;
         };
         Update: {
           floor_area_id?: string;
@@ -202,6 +204,7 @@ export type Database = {
           reservation_party_size?: number | null;
           reservation_occasion?: string | null;
           reservation_scheduled_at?: string | null;
+          reservation_group_id?: string | null;
         };
         Relationships: [];
       };
