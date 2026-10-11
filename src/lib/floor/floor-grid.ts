@@ -7,7 +7,7 @@ export const FLOOR_GRID_CELL_PX = 128;
 export const FLOOR_TABLE_SLOT_SIZE = 96;
 
 /** Visible / editable floor grid. */
-export const FLOOR_GRID_COLUMNS = 8;
+export const FLOOR_GRID_COLUMNS = 6;
 export const FLOOR_GRID_ROWS = 5;
 
 export type GridCell = {

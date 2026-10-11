@@ -85,32 +85,7 @@ insert into public.restaurant_tables (
   ('44444444-4444-4444-8444-444444444403', '22222222-2222-4222-8222-222222222222', '33333333-3333-4333-8333-333333333302', 'T1', 4, 'available', 40, 40, 96, 72)
 on conflict (id) do nothing;
 
-insert into public.product_categories (
-  id, restaurant_id, name, sort_order, preparation_station
-) values
-  (
-    '55555555-5555-4555-8555-555555555501',
-    '22222222-2222-4222-8222-222222222222',
-    'Hamburguesas',
-    1,
-    'kitchen'
-  ),
-  (
-    '55555555-5555-4555-8555-555555555502',
-    '22222222-2222-4222-8222-222222222222',
-    'Bebidas',
-    2,
-    'bar'
-  )
-on conflict (id) do nothing;
-
-insert into public.products (
-  id, restaurant_id, category_id, name, sku, price_minor, cost_minor, tax_rate_bps
-) values
-  ('66666666-6666-4666-8666-666666666601', '22222222-2222-4222-8222-222222222222', '55555555-5555-4555-8555-555555555501', 'Classic Burger', 'BRG-001', 28000, 9000, 800),
-  ('66666666-6666-4666-8666-666666666602', '22222222-2222-4222-8222-222222222222', '55555555-5555-4555-8555-555555555502', 'Cerveza', 'BEB-001', 12000, 4000, 800),
-  ('66666666-6666-4666-8666-666666666603', '22222222-2222-4222-8222-222222222222', '55555555-5555-4555-8555-555555555502', 'Café', 'BEB-002', 6000, 1500, 800)
-on conflict (id) do nothing;
+-- Full Ciao menu: run database/seed-menu-ciao.sql (or node scripts/import-menu-ciao.mjs)
 
 insert into public.payment_methods (restaurant_id, code, name, sort_order) values
   ('22222222-2222-4222-8222-222222222222', 'cash', 'Efectivo', 1),

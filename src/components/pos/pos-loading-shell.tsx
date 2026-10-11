@@ -11,8 +11,8 @@ export function PosLoadingShell({
     <div className="-m-4 flex min-h-[calc(100dvh-5.5rem)] flex-col bg-background text-foreground md:-m-6 md:min-h-[calc(100dvh-4.5rem)] md:flex-row">
       <div className="flex min-w-0 flex-1 flex-col gap-5 overflow-auto p-4 md:p-6">
         <div className="flex items-center gap-3">
-          <div className="h-11 w-[5.5rem] shrink-0 animate-pulse rounded-2xl bg-muted" />
-          <div className="h-11 min-w-0 flex-1 animate-pulse rounded-2xl bg-muted" />
+          <div className="h-11 w-[5.5rem] shrink-0 animate-pulse rounded-full bg-muted" />
+          <div className="h-11 min-w-0 flex-1 animate-pulse rounded-full bg-muted" />
         </div>
         <div className="space-y-3">
           <div className="h-4 w-24 animate-pulse rounded bg-muted" />
@@ -53,7 +53,7 @@ export function PosLoadingShell({
         <div className="space-y-3 border-t border-border px-5 py-5">
           <div className="h-4 w-full animate-pulse rounded bg-muted" />
           <div className="h-4 w-2/3 animate-pulse rounded bg-muted" />
-          <div className="h-14 w-full animate-pulse rounded-2xl bg-muted" />
+          <div className="h-14 w-full animate-pulse rounded-full bg-muted" />
         </div>
       </aside>
     </div>

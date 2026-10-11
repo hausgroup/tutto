@@ -138,6 +138,24 @@ export async function adjustOrderProductQuantityAction(input: {
   }
 }
 
+export async function releaseTableSessionAction(
+  tableId: string,
+): Promise<PosActionState> {
+  try {
+    const context = await resolveAuthContext();
+    const restaurantId = getDefaultRestaurantId(context);
+    if (!restaurantId) throw new Error("RESTAURANT_NOT_FOUND");
+    await orderService.releaseTableIfNoSentBill(
+      context,
+      restaurantId,
+      tableId,
+    );
+    return { ok: true };
+  } catch (error) {
+    return mapError(error);
+  }
+}
+
 export async function sendOrderAction(orderId: string): Promise<PosActionState> {
   try {
     const context = await resolveAuthContext();

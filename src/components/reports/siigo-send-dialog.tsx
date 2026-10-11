@@ -180,7 +180,7 @@ export function SiigoSendDialog({
                       disabled={locked}
                       onClick={() => toggle(sale.orderId)}
                       className={cn(
-                        "flex w-full items-center gap-3 rounded-2xl px-3.5 py-3 text-left transition-colors",
+                        "flex w-full items-center gap-3 rounded-full px-3.5 py-3 text-left transition-colors",
                         locked && "cursor-default bg-muted/60 opacity-70",
                         !locked &&
                           checked &&
@@ -192,7 +192,7 @@ export function SiigoSendDialog({
                     >
                       <span
                         className={cn(
-                          "flex size-5 shrink-0 items-center justify-center rounded-md text-[11px] font-bold",
+                          "flex size-5 shrink-0 items-center justify-center rounded-full text-[11px] font-bold",
                           locked && "bg-muted text-muted-foreground",
                           !locked &&
                             checked &&

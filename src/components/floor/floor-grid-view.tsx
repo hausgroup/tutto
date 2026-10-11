@@ -180,7 +180,7 @@ export function FloorGridView({
                     table={table}
                     onSelect={onSelect}
                     onWarm={onWarm}
-                    selected={
+                    reservePickSelected={
                       selectedTableId === table.id ||
                       Boolean(highlighted?.has(table.id))
                     }

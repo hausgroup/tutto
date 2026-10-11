@@ -1,10 +1,12 @@
 "use client";
 
-import { Users, Wine } from "lucide-react";
+import type { CSSProperties } from "react";
+import { Check, Users, Wine } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
   getSalonChairLayouts,
   getSalonTableSurfaceStyle,
+  type ChairLayout,
 } from "@/lib/floor/chair-layout";
 import { effectiveOperationalStatus, getSalonMeta } from "@/lib/floor/status";
 import {
@@ -48,11 +50,29 @@ function SalonChair({
 
 const NEUTRAL_ACCENT = "bg-zinc-300 dark:bg-zinc-600";
 
+function salonChairAnchorStyle(chair: ChairLayout): CSSProperties {
+  const edge = chair.edge ?? "top";
+  const base = { left: `${chair.x}%`, top: `${chair.y}%` };
+  switch (edge) {
+    case "top":
+      return { ...base, transform: "translate(-50%, -100%)" };
+    case "bottom":
+      return { ...base, transform: "translate(-50%, 0)" };
+    case "left":
+      return { ...base, transform: "translate(0, -50%)" };
+    case "right":
+      return { ...base, transform: "translate(-100%, -50%)" };
+    default:
+      return { ...base, transform: "translate(-50%, -50%)" };
+  }
+}
+
 export function FloorTableSlot({
   table,
   onSelect,
   onWarm,
-  selected = false,
+  /** Checkmark on the white table surface (reserve pick or plan editor). */
+  reservePickSelected = false,
   allowInactive = false,
   draggable = false,
   isDragging = false,
@@ -66,7 +86,7 @@ export function FloorTableSlot({
   table: RestaurantTable;
   onSelect?: (table: RestaurantTable) => void;
   onWarm?: (table: RestaurantTable) => void;
-  selected?: boolean;
+  reservePickSelected?: boolean;
   allowInactive?: boolean;
   draggable?: boolean;
   isDragging?: boolean;
@@ -122,43 +142,35 @@ export function FloorTableSlot({
       }}
       className={cn(
         "group relative flex aspect-square size-full items-stretch justify-center",
-        "rounded-[16px] p-0 text-left transition-[background-color,box-shadow,transform,opacity]",
+        "rounded-[16px] p-0 text-left",
         "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
-        "active:scale-[0.98]",
         draggable && !disabled && "cursor-grab active:cursor-grabbing",
-        !draggable &&
-          !disabled &&
-          !busy &&
-          "cursor-pointer transition-[transform,box-shadow] duration-200 ease-out motion-reduce:transition-none [@media(hover:hover)]:hover:scale-[1.03] [@media(hover:hover)]:hover:shadow-[0_10px_28px_rgba(15,15,15,0.1)] dark:[@media(hover:hover)]:hover:shadow-[0_10px_28px_rgba(0,0,0,0.35)]",
+        !draggable && !disabled && !busy && "cursor-pointer",
         disabled && "cursor-not-allowed opacity-40",
         busy && "cursor-progress opacity-70",
-        selected &&
-          "bg-zinc-300/35 ring-1 ring-dashed ring-zinc-400/80 dark:bg-zinc-700/35 dark:ring-zinc-500",
         isDragging && "opacity-40",
         className,
       )}
       aria-label={
         neutralAppearance
-          ? `Mesa ${table.label}, capacidad ${table.capacity}`
+          ? `Mesa ${table.label}, capacidad ${table.capacity}${
+              reservePickSelected ? ", seleccionada" : ""
+            }`
           : `Mesa ${table.label}, ${salon.label}, capacidad ${table.capacity}${
-              showBill ? `, cuenta ${formatCurrency(billTotalMinor)}` : ""
-            }${
+              reservePickSelected ? ", seleccionada para reservar" : ""
+            }${showBill ? `, cuenta ${formatCurrency(billTotalMinor)}` : ""}${
               showPendingDrinks ? ", bebidas pendientes de entregar" : ""
             }`
       }
       aria-busy={busy}
-      aria-pressed={selected}
+      aria-pressed={reservePickSelected}
     >
       <div className="relative size-full select-none">
         {chairs.map((chair, index) => (
           <div
             key={`${table.id}-chair-${index}`}
             className="absolute"
-            style={{
-              left: `${chair.x}%`,
-              top: `${chair.y}%`,
-              transform: "translate(-50%, -50%)",
-            }}
+            style={salonChairAnchorStyle(chair)}
           >
             <SalonChair edge={chair.edge ?? "top"} className={chairClass} />
           </div>
@@ -166,12 +178,23 @@ export function FloorTableSlot({
 
         <div
           className={cn(
-            "absolute flex overflow-hidden",
+            "absolute flex origin-center overflow-hidden transition-transform duration-200 ease-out motion-reduce:transition-none",
             surface.inset,
             surface.className,
             surfaceClass,
+            !disabled &&
+              !busy &&
+              "[@media(hover:hover)]:group-hover:scale-[1.04] group-active:scale-[0.98]",
           )}
         >
+          {reservePickSelected ? (
+            <span
+              className="absolute right-2 top-2 z-10 flex size-6 items-center justify-center rounded-md border-2 border-primary bg-primary text-primary-foreground shadow-sm"
+              aria-hidden
+            >
+              <Check className="size-3.5" strokeWidth={3} />
+            </span>
+          ) : null}
           <div className="flex min-h-0 flex-1 flex-col items-start justify-between gap-1 px-2 py-2.5 sm:px-3 sm:py-3">
             <div className="min-w-0 space-y-1">
               <div className="flex w-full items-start justify-between gap-1">

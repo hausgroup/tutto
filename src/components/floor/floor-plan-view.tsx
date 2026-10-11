@@ -5,6 +5,8 @@ import { useRouter } from "next/navigation";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { toast } from "sonner";
 import { Button } from "@/components/arc/button/button";
+import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
 import { FloorGridView } from "@/components/floor/floor-grid-view";
 import { FloorMobileTableList } from "@/components/floor/floor-mobile-table-list";
 import { FloorZonePills } from "@/components/floor/floor-zone-pills";
@@ -12,10 +14,26 @@ import { TableReservationDialog } from "@/components/floor/table-reservation-dia
 import type { FloorSnapshot, RestaurantTable } from "@/lib/floor/types";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { warmPosCatalog, warmPosTable } from "@/lib/pos/client-cache";
+import { persistStaffNameForTable } from "@/lib/pos/staff-attendant";
+import { effectiveOperationalStatus } from "@/lib/floor/status";
 import { cn } from "@/lib/utils";
 
-function posHref(table: RestaurantTable) {
-  return `/pos/${table.id}?t=${encodeURIComponent(table.label)}`;
+function posHref(table: RestaurantTable, staffName?: string) {
+  const params = new URLSearchParams();
+  params.set("t", table.label);
+  const staff = staffName?.trim();
+  if (staff) params.set("staff", staff);
+  return `/pos/${table.id}?${params.toString()}`;
+}
+
+function tableIsFreeForNewOrder(
+  table: RestaurantTable,
+  billTotalsByTableId: Record<string, number>,
+): boolean {
+  return (
+    effectiveOperationalStatus(table.status, billTotalsByTableId[table.id]) ===
+    "available"
+  );
 }
 
 function canReserveTable(
@@ -55,6 +73,9 @@ export function FloorPlanView({
   const [activeAreaId, setActiveAreaId] = useState(
     snapshot.areas[0]?.id ?? "",
   );
+  const [staffPromptTable, setStaffPromptTable] =
+    useState<RestaurantTable | null>(null);
+  const [staffNameInput, setStaffNameInput] = useState("");
 
   useEffect(() => {
     setLiveSnapshot(snapshot);
@@ -110,13 +131,37 @@ export function FloorPlanView({
     router.prefetch(posHref(table));
   }
 
-  function openPos(table: RestaurantTable) {
+  function openPos(table: RestaurantTable, staffName?: string) {
     setOpeningId(table.id);
+    if (staffName?.trim()) {
+      persistStaffNameForTable(table.id, staffName);
+    }
     void warmPosTable(table.id).catch(() => {});
-    const href = posHref(table);
+    const href = posHref(table, staffName);
     startTransition(() => {
       router.push(href);
     });
+  }
+
+  function beginOpenPos(table: RestaurantTable) {
+    if (tableIsFreeForNewOrder(table, billTotalsByTableId)) {
+      setStaffNameInput("");
+      setStaffPromptTable(table);
+      return;
+    }
+    openPos(table);
+  }
+
+  function confirmStaffAndOpenPos() {
+    const table = staffPromptTable;
+    const name = staffNameInput.trim();
+    if (!table) return;
+    if (!name) {
+      toast.error("Escribe tu nombre para abrir la mesa.");
+      return;
+    }
+    setStaffPromptTable(null);
+    openPos(table, name);
   }
 
   function tableIdsInReservationGroup(table: RestaurantTable): string[] {
@@ -155,7 +200,7 @@ export function FloorPlanView({
 
   function handleTablePress(table: RestaurantTable) {
     if (!reservePickActive) {
-      openPos(table);
+      beginOpenPos(table);
       return;
     }
     toggleReserveSelection(table);
@@ -263,6 +308,49 @@ export function FloorPlanView({
         }}
         onReserved={handleReserved}
       />
+
+      <Dialog
+        open={staffPromptTable != null}
+        onOpenChange={(open) => {
+          if (!open) setStaffPromptTable(null);
+        }}
+      >
+        <DialogContent showCloseButton={false} className="gap-3 sm:max-w-xs">
+          <DialogTitle className="text-sm font-normal text-muted-foreground">
+            Atiende
+          </DialogTitle>
+          <Input
+            value={staffNameInput}
+            onChange={(event) => setStaffNameInput(event.target.value)}
+            placeholder="Nombre"
+            aria-label="Nombre"
+            autoFocus
+            onKeyDown={(event) => {
+              if (event.key === "Enter") {
+                event.preventDefault();
+                confirmStaffAndOpenPos();
+              }
+            }}
+          />
+          <div className="flex justify-end gap-2">
+            <Button
+              type="button"
+              variant="secondary"
+              onClick={() => setStaffPromptTable(null)}
+            >
+              Cancelar
+            </Button>
+            <Button
+              type="button"
+              variant="primary"
+              disabled={!staffNameInput.trim()}
+              onClick={confirmStaffAndOpenPos}
+            >
+              Abrir mesa
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

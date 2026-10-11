@@ -234,7 +234,7 @@ export function PosCheckoutDialog({
                       type="button"
                       disabled={pending}
                       onClick={() => registerPayment(method.id)}
-                      className="flex w-full items-center gap-3 rounded-2xl border border-border bg-card px-4 py-3 text-left transition-colors hover:bg-muted/80 disabled:opacity-50"
+                      className="flex w-full items-center gap-3 rounded-full border border-border bg-card px-4 py-3 text-left transition-colors hover:bg-muted/80 disabled:opacity-50"
                     >
                       <span className="flex size-10 items-center justify-center rounded-xl bg-muted">
                         <Icon className="size-5" aria-hidden />
@@ -269,7 +269,7 @@ export function PosCheckoutDialog({
                 type="button"
                 onClick={() => setCheckoutTab("full")}
                 className={cn(
-                  "flex-1 rounded-xl py-2 text-sm font-medium transition-colors",
+                  "flex-1 rounded-full py-2 text-sm font-medium transition-colors",
                   checkoutTab === "full"
                     ? "bg-foreground text-background"
                     : "bg-muted text-muted-foreground",
@@ -281,7 +281,7 @@ export function PosCheckoutDialog({
                 type="button"
                 onClick={() => setCheckoutTab("split")}
                 className={cn(
-                  "flex flex-1 items-center justify-center gap-1.5 rounded-xl py-2 text-sm font-medium transition-colors",
+                  "flex flex-1 items-center justify-center gap-1.5 rounded-full py-2 text-sm font-medium transition-colors",
                   checkoutTab === "split"
                     ? "bg-foreground text-background"
                     : "bg-muted text-muted-foreground",
@@ -448,7 +448,7 @@ export function PosCheckoutDialog({
             <div className="-mx-0 border-t border-border px-5 py-4">
               <Button
                 type="button"
-                className="h-12 w-full rounded-2xl text-base font-semibold"
+                className="h-12 w-full text-base font-semibold"
                 disabled={pending || remainingMinor <= 0}
                 onClick={() =>
                   setPayTarget({

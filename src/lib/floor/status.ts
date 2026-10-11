@@ -73,30 +73,27 @@ export const SALON_STATE_META: Record<
     description: "Lista para recibir clientes",
     tableStatus: "available",
     icon: CircleDot,
-    // Mint pastel
-    accentClass: "bg-[#A8E0CB] dark:bg-[#6FCBB0]",
+    accentClass: "bg-emerald-500 dark:bg-emerald-600",
     badgeClass:
-      "border-[#A8E0CB]/60 text-[#3F8F74] dark:border-[#6FCBB0]/45 dark:text-[#A8E0CB]",
+      "border-emerald-500/50 text-emerald-800 dark:border-emerald-500/40 dark:text-emerald-400",
   },
   reserved: {
     label: "Reservada",
     description: "Reservación confirmada",
     tableStatus: "reserved",
     icon: CircleCheck,
-    // Soft greyish yellow
-    accentClass: "bg-[#E4DDB0] dark:bg-[#C5B87E]",
+    accentClass: "bg-amber-500 dark:bg-amber-600",
     badgeClass:
-      "border-[#E4DDB0]/70 text-[#8A8050] dark:border-[#C5B87E]/45 dark:text-[#E4DDB0]",
+      "border-amber-500/50 text-amber-900 dark:border-amber-500/40 dark:text-amber-400",
   },
   occupied: {
     label: "Ocupada",
     description: "Con clientes en la mesa",
     tableStatus: "occupied",
     icon: Utensils,
-    // Pastel pink / soft rose
-    accentClass: "bg-[#F0B6C1] dark:bg-[#E48A9A]",
+    accentClass: "bg-rose-500 dark:bg-rose-600",
     badgeClass:
-      "border-[#F0B6C1]/70 text-[#B85F70] dark:border-[#E48A9A]/45 dark:text-[#F0B6C1]",
+      "border-rose-500/50 text-rose-800 dark:border-rose-500/40 dark:text-rose-400",
   },
 };
 

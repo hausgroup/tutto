@@ -54,7 +54,19 @@ export const setProductActiveSchema = z.object({
   isActive: z.boolean(),
 });
 
+export const deleteProductSchema = z.object({
+  restaurantId: z.string().uuid(),
+  productId: z.string().uuid(),
+});
+
+export const deleteCategorySchema = z.object({
+  restaurantId: z.string().uuid(),
+  categoryId: z.string().uuid(),
+});
+
 export type CreateCategoryInput = z.infer<typeof createCategorySchema>;
 export type CreateProductInput = z.infer<typeof createProductSchema>;
 export type UpdateProductInput = z.infer<typeof updateProductSchema>;
 export type SetProductActiveInput = z.infer<typeof setProductActiveSchema>;
+export type DeleteProductInput = z.infer<typeof deleteProductSchema>;
+export type DeleteCategoryInput = z.infer<typeof deleteCategorySchema>;

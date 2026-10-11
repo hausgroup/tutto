@@ -226,10 +226,74 @@ export const orderService = {
         live.closedAt = new Date().toISOString();
         live.items = [];
       }
+      await syncTableForOrder(context, restaurantId, {
+        ...order,
+        status: "voided",
+        items: [],
+        closedAt: new Date().toISOString(),
+      });
       return;
     }
 
     await ordersDb.voidOpenOrder(order.id);
+    await syncTableForOrder(context, restaurantId, {
+      ...order,
+      status: "voided",
+      items: [],
+      closedAt: new Date().toISOString(),
+    });
+  },
+
+  /** Leave POS without sending: void empty or draft-only tickets so the table stays free. */
+  async releaseTableIfNoSentBill(
+    context: AuthContext,
+    restaurantId: string,
+    tableId: string,
+  ): Promise<void> {
+    getActiveMembership(context, restaurantId);
+    const order = await orderService.getOpenOrderForTable(
+      context,
+      restaurantId,
+      tableId,
+    );
+    if (!order) return;
+    if (orderHasSentBill(order)) return;
+
+    if (canUseDemoExperience()) {
+      const store = getDemoRestaurantStore();
+      const live = store.orders.find((o) => o.id === order.id);
+      if (live) {
+        live.items = [];
+        live.status = "voided";
+        live.closedAt = new Date().toISOString();
+        live.subtotalMinor = 0;
+        live.taxMinor = 0;
+        live.totalMinor = 0;
+      }
+      await syncTableForOrder(context, restaurantId, {
+        ...order,
+        status: "voided",
+        items: [],
+        closedAt: new Date().toISOString(),
+      });
+      return;
+    }
+
+    for (const item of order.items) {
+      if (
+        item.status === "pending" &&
+        canRemoveLineFromPosTicket(item)
+      ) {
+        await ordersDb.deleteOrderItem(item.id);
+      }
+    }
+    await ordersDb.voidOpenOrder(order.id);
+    await syncTableForOrder(context, restaurantId, {
+      ...order,
+      status: "voided",
+      items: [],
+      closedAt: new Date().toISOString(),
+    });
   },
 
   async addProductToOrder(

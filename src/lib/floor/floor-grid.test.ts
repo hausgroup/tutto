@@ -57,7 +57,7 @@ describe("gridCellToPosition", () => {
 });
 
 describe("layoutTablesOnGrid", () => {
-  it("uses the full 8-column floor by default", () => {
+  it("uses the full column floor by default", () => {
     const layout = layoutTablesOnGrid([
       table({ id: "1", posX: 0, posY: 0 }),
       table({ id: "2", posX: FLOOR_GRID_CELL_PX * 2, posY: FLOOR_GRID_CELL_PX }),

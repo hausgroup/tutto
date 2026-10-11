@@ -12,12 +12,15 @@ import {
   Pencil,
   Plus,
   Soup,
+  Trash2,
   UtensilsCrossed,
   type LucideIcon,
 } from "lucide-react";
 import {
   createCategoryAction,
   createProductAction,
+  deleteCategoryAction,
+  deleteProductAction,
   setProductActiveAction,
   updateProductAction,
 } from "@/lib/catalog/actions";
@@ -29,6 +32,7 @@ import type {
   CatalogSnapshot,
   PreparationStation,
   Product,
+  ProductCategory,
 } from "@/lib/catalog/types";
 import { invalidatePosCatalogCache } from "@/lib/pos/client-cache";
 import { formatCurrency } from "@/lib/utils/money";
@@ -158,6 +162,19 @@ export function MenuCatalog({
     [snapshot.categories],
   );
 
+  const categoryIdSet = useMemo(
+    () => new Set(categories.map((c) => c.id)),
+    [categories],
+  );
+
+  const uncategorisedProducts = useMemo(
+    () =>
+      snapshot.products.filter(
+        (p) => !p.categoryId || !categoryIdSet.has(p.categoryId),
+      ),
+    [snapshot.products, categoryIdSet],
+  );
+
   function stationForCategory(catId: string): PreparationStation {
     return (
       categories.find((category) => category.id === catId)
@@ -216,6 +233,52 @@ export function MenuCatalog({
         item.id === product.id ? product : item,
       ),
     }));
+  }
+
+  function deleteCategory(category: ProductCategory) {
+    const count = snapshot.products.filter(
+      (p) => p.categoryId === category.id,
+    ).length;
+    const confirmMessage =
+      count > 0
+        ? `¿Eliminar la categoría "${category.name}"? ${count} producto${count === 1 ? "" : "s"} quedarán sin categoría.`
+        : `¿Eliminar la categoría "${category.name}"? Esta acción no se puede deshacer.`;
+    if (!window.confirm(confirmMessage)) {
+      return;
+    }
+    startTransition(async () => {
+      const result = await deleteCategoryAction({
+        restaurantId,
+        categoryId: category.id,
+      });
+      if (result.error) {
+        toast.error(result.error);
+        return;
+      }
+      setSnapshot((current) => {
+        const nextCategories = current.categories.filter(
+          (c) => c.id !== category.id,
+        );
+        const nextProducts = current.products.map((p) =>
+          p.categoryId === category.id ? { ...p, categoryId: null } : p,
+        );
+        if (categoryId === category.id) {
+          setCategoryId(nextCategories[0]?.id ?? "");
+        }
+        return {
+          ...current,
+          categories: nextCategories,
+          products: nextProducts,
+        };
+      });
+      invalidatePosCatalogCache();
+      toast.success(
+        count > 0
+          ? "Categoría eliminada; productos en Sin categoría"
+          : "Categoría eliminada",
+      );
+      router.refresh();
+    });
   }
 
   function createCategory() {
@@ -306,6 +369,37 @@ export function MenuCatalog({
     });
   }
 
+  function deleteProduct() {
+    if (!editingProduct) return;
+    const label = editingProduct.name;
+    if (
+      !window.confirm(
+        `¿Eliminar "${label}" del menú? Esta acción no se puede deshacer.`,
+      )
+    ) {
+      return;
+    }
+    startTransition(async () => {
+      const result = await deleteProductAction({
+        restaurantId,
+        productId: editingProduct.id,
+      });
+      if (result.error) {
+        toast.error(result.error);
+        return;
+      }
+      setSnapshot((current) => ({
+        ...current,
+        products: current.products.filter((p) => p.id !== editingProduct.id),
+      }));
+      invalidatePosCatalogCache();
+      toast.success("Producto eliminado");
+      resetProductForm();
+      setProductOpen(false);
+      router.refresh();
+    });
+  }
+
   function toggleProductOnMenu(product: Product, onMenu: boolean) {
     startTransition(async () => {
       const result = await setProductActiveAction({
@@ -324,6 +418,75 @@ export function MenuCatalog({
       toast.message(onMenu ? "Visible en el menú" : "Oculto del menú");
       router.refresh();
     });
+  }
+
+  function renderProductCards(products: Product[]) {
+    return (
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-4">
+        {products.map((product) => (
+          <div
+            key={product.id}
+            className={cn(
+              "flex min-h-[150px] flex-col justify-between rounded-[20px] p-4",
+              product.isActive
+                ? "bg-card text-card-foreground ring-1 ring-border"
+                : "bg-muted/60 text-muted-foreground ring-1 ring-border",
+            )}
+          >
+            <div className="min-w-0 flex-1">
+              <div className="flex items-start justify-between gap-2">
+                <p className="min-w-0 text-[11px] text-muted-foreground">
+                  {stationLabel(product.preparationStation)}
+                </p>
+                {canManage ? (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="-mt-1 -mr-1 h-7 shrink-0 px-2 text-xs"
+                    onClick={() => openProductEditor(product)}
+                  >
+                    <Pencil className="size-3.5" />
+                    Editar
+                  </Button>
+                ) : null}
+              </div>
+              <p className="mt-2 text-base font-semibold leading-snug">
+                {product.name}
+              </p>
+              <p className="mt-1 text-sm tabular-nums text-muted-foreground">
+                {formatCurrency(product.priceMinor)}
+              </p>
+              <p className="mt-2 truncate text-[11px] text-muted-foreground">
+                {product.sku ?? "Sin SKU"}
+              </p>
+            </div>
+            {canManage ? (
+              <div
+                className="-mx-4 -mb-4 mt-3 flex items-center justify-between gap-2 border-t border-border/60 px-4 py-3"
+              >
+                <Label
+                  htmlFor={`menu-visible-${product.id}`}
+                  className="text-[11px] font-normal text-muted-foreground"
+                >
+                  En el menú
+                </Label>
+                <Switch
+                  id={`menu-visible-${product.id}`}
+                  size="sm"
+                  checked={product.isActive}
+                  disabled={pending}
+                  onCheckedChange={(checked) =>
+                    toggleProductOnMenu(product, checked)
+                  }
+                  aria-label={`${product.name}, visible en el menú`}
+                />
+              </div>
+            ) : null}
+          </div>
+        ))}
+      </div>
+    );
   }
 
   return (
@@ -620,8 +783,23 @@ export function MenuCatalog({
                     </div>
                   )}
                   <DialogFooter
-                    className="m-0 shrink-0 flex-row justify-end gap-2 rounded-none border-t border-border/60 bg-transparent px-5 py-3"
+                    className="m-0 shrink-0 flex-row items-center gap-2 rounded-none border-t border-border/60 bg-transparent px-5 py-3"
                   >
+                    {editingProduct ? (
+                      <Button
+                        type="button"
+                        variant="destructive"
+                        size="sm"
+                        className="mr-auto"
+                        disabled={pending}
+                        onClick={deleteProduct}
+                      >
+                        <Trash2 className="size-4" />
+                        Eliminar
+                      </Button>
+                    ) : (
+                      <span className="mr-auto" />
+                    )}
                     <Button
                       type="button"
                       variant="ghost"
@@ -667,10 +845,23 @@ export function MenuCatalog({
                 <div
                   key={category.id}
                   className={cn(
-                    "flex min-h-[108px] flex-col items-start justify-between rounded-[20px] p-4",
+                    "relative flex min-h-[108px] flex-col items-start justify-between rounded-[20px] p-4",
                     cosyPastel(index),
                   )}
                 >
+                  {canManage ? (
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      className="absolute top-2 right-2 h-7 w-7 p-0 opacity-70 hover:opacity-100"
+                      aria-label={`Eliminar categoría ${category.name}`}
+                      disabled={pending}
+                      onClick={() => deleteCategory(category)}
+                    >
+                      <Trash2 className="size-3.5" />
+                    </Button>
+                  ) : null}
                   <Icon className="size-5 opacity-80" aria-hidden />
                   <div>
                     <p className="text-base font-semibold leading-tight">
@@ -695,73 +886,16 @@ export function MenuCatalog({
         if (products.length === 0) return null;
         return (
           <SoftSection key={category.id} title={category.name}>
-              <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-4">
-                {products.map((product) => (
-                  <div
-                    key={product.id}
-                    className={cn(
-                      "flex min-h-[150px] flex-col justify-between rounded-[20px] p-4",
-                      product.isActive
-                        ? "bg-card text-card-foreground ring-1 ring-border"
-                        : "bg-muted/60 text-muted-foreground ring-1 ring-border",
-                    )}
-                  >
-                    <div className="min-w-0 flex-1">
-                      <div className="flex items-start justify-between gap-2">
-                        <p className="min-w-0 text-[11px] text-muted-foreground">
-                          {stationLabel(product.preparationStation)}
-                        </p>
-                        {canManage ? (
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="sm"
-                            className="-mt-1 -mr-1 h-7 shrink-0 px-2 text-xs"
-                            onClick={() => openProductEditor(product)}
-                          >
-                            <Pencil className="size-3.5" />
-                            Editar
-                          </Button>
-                        ) : null}
-                      </div>
-                      <p className="mt-2 text-base font-semibold leading-snug">
-                        {product.name}
-                      </p>
-                      <p className="mt-1 text-sm tabular-nums text-muted-foreground">
-                        {formatCurrency(product.priceMinor)}
-                      </p>
-                      <p className="mt-2 truncate text-[11px] text-muted-foreground">
-                        {product.sku ?? "Sin SKU"}
-                      </p>
-                    </div>
-                    {canManage ? (
-                      <div
-                        className="-mx-4 mt-3 flex items-center justify-between gap-2 border-t border-border/60 px-4 pt-2"
-                      >
-                        <Label
-                          htmlFor={`menu-visible-${product.id}`}
-                          className="text-[11px] font-normal text-muted-foreground"
-                        >
-                          En el menú
-                        </Label>
-                        <Switch
-                          id={`menu-visible-${product.id}`}
-                          size="sm"
-                          checked={product.isActive}
-                          disabled={pending}
-                          onCheckedChange={(checked) =>
-                            toggleProductOnMenu(product, checked)
-                          }
-                          aria-label={`${product.name}, visible en el menú`}
-                        />
-                      </div>
-                    ) : null}
-                  </div>
-                ))}
-              </div>
+            {renderProductCards(products)}
           </SoftSection>
         );
       })}
+
+      {uncategorisedProducts.length > 0 ? (
+        <SoftSection title="Sin categoría">
+          {renderProductCards(uncategorisedProducts)}
+        </SoftSection>
+      ) : null}
     </div>
   );
 }

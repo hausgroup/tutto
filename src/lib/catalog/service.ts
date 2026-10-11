@@ -10,10 +10,14 @@ import type {
 import type {
   CreateCategoryInput,
   CreateProductInput,
+  DeleteCategoryInput,
+  DeleteProductInput,
   SetProductActiveInput,
   UpdateProductInput,
 } from "@/lib/catalog/schemas";
 import {
+  deleteCategory as deleteCategoryRow,
+  deleteProduct as deleteProductRow,
   fetchCatalogSnapshot,
   insertCategory,
   insertProduct,
@@ -199,6 +203,55 @@ export const catalogService = {
       trackInventory: input.trackInventory,
       isActive: input.isActive,
     });
+  },
+
+  async deleteCategory(
+    context: AuthContext,
+    input: DeleteCategoryInput,
+  ): Promise<void> {
+    requirePermission(context, PERMISSIONS.PRODUCTS_MANAGE, input.restaurantId);
+    assertRestaurant(context, input.restaurantId);
+
+    if (canUseDemoExperience()) {
+      const store = getDemoRestaurantStore();
+      const index = store.catalog.categories.findIndex(
+        (item) =>
+          item.id === input.categoryId &&
+          item.restaurantId === input.restaurantId,
+      );
+      if (index === -1) throw new Error("CATEGORY_NOT_FOUND");
+      for (const product of store.catalog.products) {
+        if (product.categoryId === input.categoryId) {
+          product.categoryId = null;
+        }
+      }
+      store.catalog.categories.splice(index, 1);
+      return;
+    }
+
+    await deleteCategoryRow(input);
+  },
+
+  async deleteProduct(
+    context: AuthContext,
+    input: DeleteProductInput,
+  ): Promise<void> {
+    requirePermission(context, PERMISSIONS.PRODUCTS_MANAGE, input.restaurantId);
+    assertRestaurant(context, input.restaurantId);
+
+    if (canUseDemoExperience()) {
+      const store = getDemoRestaurantStore();
+      const index = store.catalog.products.findIndex(
+        (item) =>
+          item.id === input.productId &&
+          item.restaurantId === input.restaurantId,
+      );
+      if (index === -1) throw new Error("PRODUCT_NOT_FOUND");
+      store.catalog.products.splice(index, 1);
+      return;
+    }
+
+    await deleteProductRow(input);
   },
 
   async setProductActive(

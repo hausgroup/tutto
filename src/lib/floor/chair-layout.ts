@@ -120,12 +120,17 @@ export function getChairLayouts(
  * Uniform salon illustration: always 4 half-circle seats,
  * two on top and two on bottom — independent of capacity/shape.
  */
+/** Must match `getSalonTableSurfaceStyle` inset so chairs meet the card edge. */
+export const SALON_TABLE_INSET_Y_PERCENT = 15;
+
 export function getSalonChairLayouts(): ChairLayout[] {
+  const top = SALON_TABLE_INSET_Y_PERCENT;
+  const bottom = 100 - SALON_TABLE_INSET_Y_PERCENT;
   return [
-    { x: 34, y: 11, rotation: 0, edge: "top" },
-    { x: 66, y: 11, rotation: 0, edge: "top" },
-    { x: 34, y: 89, rotation: 0, edge: "bottom" },
-    { x: 66, y: 89, rotation: 0, edge: "bottom" },
+    { x: 34, y: top, rotation: 0, edge: "top" },
+    { x: 66, y: top, rotation: 0, edge: "top" },
+    { x: 34, y: bottom, rotation: 0, edge: "bottom" },
+    { x: 66, y: bottom, rotation: 0, edge: "bottom" },
   ];
 }
 

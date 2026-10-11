@@ -19,13 +19,18 @@ import {
 import { Button } from "@/components/arc/button/button";
 import type { CatalogSnapshot, Product } from "@/lib/catalog/types";
 import type { DrinkServeTiming, Order, OrderItem } from "@/lib/orders/types";
-import type { RestaurantTable, TableReservation } from "@/lib/floor/types";
+import type {
+  RestaurantTable,
+  TableReservation,
+  TableStatus,
+} from "@/lib/floor/types";
 import { TableReservationDialog } from "@/components/floor/table-reservation-dialog";
 import { PosTableReservationIndicator } from "@/components/pos/pos-table-reservation-indicator";
 import {
   adjustOrderProductQuantityAction,
   cancelTableReservationAction,
   moveBarDrinkUnitToWithMealAction,
+  releaseTableSessionAction,
   removeOrderLineAction,
   sendOrderAction,
 } from "@/lib/orders/actions";
@@ -71,6 +76,15 @@ import {
 } from "@/lib/floor/client-cache";
 import { formatCurrency } from "@/lib/utils/money";
 import { cn } from "@/lib/utils";
+
+function floorSalonStatusFromPos(
+  hasSentBill: boolean,
+  hasReservation: boolean,
+): TableStatus {
+  if (hasSentBill) return "occupied";
+  if (hasReservation) return "reserved";
+  return "available";
+}
 
 function draftProductQty(order: Order, productId: string): number {
   let sum = 0;
@@ -147,6 +161,7 @@ export function MobilePosView({
     tableReservation ?? null,
   );
   const [checkoutPending, startTransition] = useTransition();
+  const [sendPending, setSendPending] = useState(false);
   const [cancelReservationPending, startCancelReservation] = useTransition();
 
   useEffect(() => {
@@ -186,7 +201,9 @@ export function MobilePosView({
       patchCachedFloorCancelReservation(tableId, groupId);
       patchCachedFloorTableStatus(tableId, "available");
       setActiveReservation(null);
+      clearCachedPosBoot(tableId);
       void warmFloorBoot({ force: true });
+      router.push("/floor");
     });
   }
 
@@ -392,11 +409,12 @@ export function MobilePosView({
   useEffect(() => {
     if (opening || !order.tableId || order.id.startsWith("opening-")) return;
     const timer = window.setTimeout(() => {
-      setCachedPosOrder(order.tableId!, order);
-      patchCachedFloorTableStatus(
-        order.tableId!,
-        hasSentBill ? "occupied" : "available",
+      const nextStatus = floorSalonStatusFromPos(
+        hasSentBill,
+        activeReservation != null,
       );
+      setCachedPosOrder(order.tableId!, order);
+      patchCachedFloorTableStatus(order.tableId!, nextStatus);
       patchCachedFloorBillTotal(
         order.tableId!,
         hasSentBill ? sessionBill.totalMinor : 0,
@@ -407,7 +425,7 @@ export function MobilePosView({
       );
     }, 200);
     return () => window.clearTimeout(timer);
-  }, [order, opening, hasSentBill, sessionBill.totalMinor]);
+  }, [order, opening, hasSentBill, sessionBill.totalMinor, activeReservation]);
 
   const categories = useMemo(
     () =>
@@ -827,54 +845,50 @@ export function MobilePosView({
   }
 
   function sendToKitchen() {
-    if (opening || order.id.startsWith("opening-")) return;
-    startTransition(async () => {
-      await syncQueue.current;
-      const orderId = orderRef.current.id;
-      const itemIdsToPrint = orderRef.current.items
-        .filter((item) => item.status === "pending")
-        .map((item) => item.id);
+    if (opening || order.id.startsWith("opening-") || sendPending) return;
+    void (async () => {
+      setSendPending(true);
+      try {
+        await syncQueue.current;
+        const orderId = orderRef.current.id;
+        const itemIdsToPrint = orderRef.current.items
+          .filter((item) => item.status === "pending")
+          .map((item) => item.id);
 
-      const [result, printResult] = await Promise.all([
-        sendOrderAction(orderId),
-        itemIdsToPrint.length > 0
-          ? printStationTicketsAction({
-              orderId,
-              reprint: false,
-              itemIds: itemIdsToPrint,
-            })
-          : Promise.resolve({} as Awaited<
-              ReturnType<typeof printStationTicketsAction>
-            >),
-      ]);
+        const result = await sendOrderAction(orderId);
+        if (result.error) {
+          toast.error(result.error);
+          return;
+        }
 
-      if (result.error) {
-        toast.error(result.error);
-        return;
-      }
-      if (result.order) setOrder(result.order);
-      setMobilePhase("menu");
-      if (order.tableId) {
-        const synced = result.order ?? order;
-        const bill = orderHasSentBill(synced);
-        patchCachedFloorTableStatus(
-          order.tableId,
-          bill ? "occupied" : "available",
-        );
-        patchCachedFloorBillTotal(
-          order.tableId,
-          bill ? synced.totalMinor : 0,
-        );
-        patchCachedFloorPendingBarDrinks(
-          order.tableId,
-          bill && orderHasPendingBarDrinks(synced),
-        );
-      }
+        const synced = result.order ?? orderRef.current;
+        if (result.order) setOrder(result.order);
+        setMobilePhase("menu");
+        if (synced.tableId) {
+          const bill = orderHasSentBill(synced);
+          patchCachedFloorTableStatus(
+            synced.tableId,
+            floorSalonStatusFromPos(bill, activeReservation != null),
+          );
+          patchCachedFloorBillTotal(
+            synced.tableId,
+            bill ? synced.totalMinor : 0,
+          );
+          patchCachedFloorPendingBarDrinks(
+            synced.tableId,
+            bill && orderHasPendingBarDrinks(synced),
+          );
+        }
 
-      if (itemIdsToPrint.length > 0) {
-        await runPrintOrderTickets(false, itemIdsToPrint, printResult);
+        if (itemIdsToPrint.length > 0) {
+          void runPrintOrderTickets(false, itemIdsToPrint).catch(() => {
+            toast.error("No pudimos imprimir los tickets.");
+          });
+        }
+      } finally {
+        setSendPending(false);
       }
-    });
+    })();
   }
 
   function openCheckout() {
@@ -894,8 +908,32 @@ export function MobilePosView({
   }
 
   function goToSalon() {
-    void warmFloorBoot();
-    router.push("/floor");
+    const current = orderRef.current;
+    const tableId = current.tableId;
+
+    const finish = () => {
+      void warmFloorBoot({ force: true });
+      router.push("/floor");
+    };
+
+    if (!tableId || orderHasSentBill(current)) {
+      finish();
+      return;
+    }
+
+    void releaseTableSessionAction(tableId).then((result) => {
+      if (result.error) {
+        toast.error(result.error);
+      }
+      clearCachedPosBoot(tableId);
+      patchCachedFloorTableStatus(
+        tableId,
+        floorSalonStatusFromPos(false, activeReservation != null),
+      );
+      patchCachedFloorBillTotal(tableId, 0);
+      patchCachedFloorPendingBarDrinks(tableId, false);
+      finish();
+    });
   }
 
   function primaryAction() {
@@ -910,14 +948,20 @@ export function MobilePosView({
   }, [router]);
 
   return (
-    <div className="-m-4 flex min-h-[calc(100dvh-5.5rem)] flex-col bg-background text-foreground md:-m-6 md:min-h-[calc(100dvh-4.5rem)] md:flex-row">
+    <div
+      className={cn(
+        "-m-4 flex flex-col overflow-hidden bg-background text-foreground",
+        "h-[calc(100dvh-5.5rem)] max-h-[calc(100dvh-5.5rem)]",
+        "md:-m-6 md:h-[calc(100dvh-4.5rem)] md:max-h-[calc(100dvh-4.5rem)] md:flex-row",
+      )}
+    >
       <div
         className={cn(
-          "flex min-h-0 min-w-0 flex-1 flex-col md:min-h-[calc(100dvh-4.5rem)]",
+          "flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden",
           mobilePhase === "ticket" && "max-md:hidden",
         )}
       >
-        <div className="flex min-h-0 flex-1 flex-col gap-5 overflow-y-auto p-4 md:p-6">
+        <div className="flex min-h-0 flex-1 flex-col gap-5 overflow-y-auto overscroll-contain p-4 md:p-6">
         <div className="flex items-center gap-2">
           <Button
             type="button"
@@ -1127,13 +1171,13 @@ export function MobilePosView({
 
       <aside
         className={cn(
-          "flex w-full shrink-0 flex-col border-t border-border bg-card md:w-[340px] md:border-t-0 md:border-l lg:w-[380px]",
+          "flex w-full shrink-0 flex-col border-t border-border bg-card md:min-h-0 md:w-[340px] md:max-h-full md:overflow-hidden md:border-t-0 md:border-l lg:w-[380px]",
           mobilePhase === "menu"
             ? "max-md:hidden"
-            : "max-md:fixed max-md:inset-0 max-md:z-50 max-md:flex max-md:h-[100dvh] max-md:max-h-[100dvh] max-md:w-full max-md:border-0",
+            : "max-md:fixed max-md:inset-0 max-md:z-50 max-md:flex max-md:h-[100dvh] max-md:max-h-[100dvh] max-md:w-full max-md:overflow-hidden max-md:border-0",
         )}
       >
-        <div className="border-b border-border px-5 py-5">
+        <div className="shrink-0 border-b border-border px-5 py-5">
           <div className="flex min-w-0 items-center gap-2">
             <h2 className="min-w-0 truncate text-2xl font-semibold leading-none tracking-tight">
               {tableLabel}
@@ -1169,7 +1213,7 @@ export function MobilePosView({
           )}
         </div>
 
-        <div className="flex flex-col gap-2 border-t border-border px-5 py-5">
+        <div className="flex shrink-0 flex-col gap-2 border-t border-border px-5 py-5">
           <div className="space-y-1.5 text-sm">
             <div className="flex justify-between text-muted-foreground">
               <span>Subtotal</span>
@@ -1202,9 +1246,9 @@ export function MobilePosView({
               order.id.startsWith("opening-") ||
               (hasDraftToSend
                 ? false
-                : sessionBill.totalMinor === 0 || checkoutPending)
+                : sessionBill.totalMinor === 0 || checkoutPending || sendPending)
             }
-            loading={opening || checkoutPending}
+            loading={opening || checkoutPending || sendPending}
             onClick={primaryAction}
           >
             {hasDraftToSend

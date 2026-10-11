@@ -1,4 +1,5 @@
 import type { CatalogSnapshot } from "@/lib/catalog/types";
+import { getCachedFloorBoot } from "@/lib/floor/client-cache";
 import type { Order } from "@/lib/orders/types";
 import {
   bootstrapPosAction,
@@ -33,6 +34,15 @@ export function setCachedPosOrder(tableId: string, order: Order) {
   boots.set(tableId, { ...existing, order });
 }
 
+export function patchCachedPosAttendantName(
+  tableId: string,
+  attendantName: string,
+) {
+  const existing = boots.get(tableId);
+  if (!existing) return;
+  boots.set(tableId, { ...existing, attendantName });
+}
+
 export function clearCachedPosBoot(tableId: string) {
   boots.delete(tableId);
   pendingBoots.delete(tableId);
@@ -57,9 +67,22 @@ export function warmPosCatalog(): Promise<PosCatalogWarm | null> {
 }
 
 /** Start loading table POS data before navigation finishes. */
+function floorCacheSaysReserved(tableId: string): boolean {
+  const table = getCachedFloorBoot()?.snapshot.tables.find(
+    (row) => row.id === tableId,
+  );
+  return table?.status === "reserved" && table.reservation != null;
+}
+
 export function warmPosTable(tableId: string): Promise<PosBootstrap> {
   const cached = boots.get(tableId);
-  if (cached) return Promise.resolve(cached);
+  if (cached) {
+    if (floorCacheSaysReserved(tableId) && !cached.tableReservation) {
+      boots.delete(tableId);
+    } else {
+      return Promise.resolve(cached);
+    }
+  }
 
   const pending = pendingBoots.get(tableId);
   if (pending) return pending;

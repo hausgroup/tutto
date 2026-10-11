@@ -147,7 +147,7 @@ export function ReservationsPanel({ snapshot }: { snapshot: FloorSnapshot }) {
       </div>
 
       <div
-        className="flex flex-wrap gap-1 rounded-2xl border border-border/70 bg-card/50 p-1"
+        className="flex flex-wrap gap-1 rounded-full border border-border/70 bg-card/50 p-1"
         role="tablist"
         aria-label="Vista de reservas"
       >
@@ -162,7 +162,7 @@ export function ReservationsPanel({ snapshot }: { snapshot: FloorSnapshot }) {
               aria-selected={active}
               onClick={() => selectView(option.id)}
               className={cn(
-                "inline-flex flex-1 items-center justify-center gap-2 rounded-xl px-3 py-2 text-sm font-medium transition-colors sm:flex-none sm:min-w-[7rem]",
+                "inline-flex flex-1 items-center justify-center gap-2 rounded-full px-3 py-2 text-sm font-medium transition-colors sm:flex-none sm:min-w-[7rem]",
                 active
                   ? "bg-foreground text-background shadow-sm"
                   : "text-muted-foreground hover:bg-muted/60 hover:text-foreground",

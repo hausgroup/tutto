@@ -80,7 +80,7 @@ export function ExportReportDialog({
                   type="button"
                   onClick={() => setKind(option)}
                   className={cn(
-                    "rounded-2xl px-4 py-3 text-left text-sm transition-colors",
+                    "rounded-full px-4 py-3 text-left text-sm transition-colors",
                     kind === option
                       ? "bg-foreground text-background"
                       : "bg-muted text-foreground ring-1 ring-border",

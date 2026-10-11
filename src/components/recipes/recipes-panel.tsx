@@ -1,10 +1,19 @@
 "use client";
 
 import Link from "next/link";
-import { useState, useTransition } from "react";
+import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { Pencil, Plus, Trash2, Warehouse } from "lucide-react";
+import {
+  AlertTriangle,
+  ChefHat,
+  ClipboardList,
+  Pencil,
+  Plus,
+  Trash2,
+  UtensilsCrossed,
+  Warehouse,
+} from "lucide-react";
 import type { Product } from "@/lib/catalog/types";
 import {
   deleteRecipeAction,
@@ -36,8 +45,11 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { SoftSection, cosyPastel } from "@/components/ui/soft";
-import { cn } from "@/lib/utils";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { SoftStat } from "@/components/ui/soft";
+
+const RECIPE_CARD_GRID =
+  "grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-4";
 
 type LineDraft = {
   ingredientId: string;
@@ -272,6 +284,22 @@ function RecipeEditorDialog({
   );
 }
 
+function ingredientPreview(
+  recipe: Recipe,
+  ingredients: Ingredient[],
+  maxLines = 4,
+) {
+  const lines = recipe.lines.map((line) => {
+    const ingredient = ingredients.find((i) => i.id === line.ingredientId);
+    const wastage =
+      line.wastageBps > 0 ? ` (+${line.wastageBps / 100}% merma)` : "";
+    return `${ingredient?.name ?? "Insumo"}: ${line.quantity} ${ingredient?.unit ?? ""}${wastage}`;
+  });
+  const shown = lines.slice(0, maxLines);
+  const rest = lines.length - shown.length;
+  return { shown, rest };
+}
+
 export function RecipesPanel({
   restaurantId,
   inventory,
@@ -286,11 +314,30 @@ export function RecipesPanel({
   const router = useRouter();
   const [pending, startTransition] = useTransition();
 
-  const recipeByProduct = new Map(
-    inventory.recipes.map((r) => [r.productId, r]),
+  const recipeByProduct = useMemo(
+    () => new Map(inventory.recipes.map((r) => [r.productId, r])),
+    [inventory.recipes],
   );
-  const menuProducts = products.filter((p) => p.isActive);
-  const withoutRecipe = menuProducts.filter((p) => !recipeByProduct.has(p.id));
+  const menuProducts = useMemo(
+    () => products.filter((p) => p.isActive),
+    [products],
+  );
+  const withoutRecipe = useMemo(
+    () => menuProducts.filter((p) => !recipeByProduct.has(p.id)),
+    [menuProducts, recipeByProduct],
+  );
+
+  const avgFoodCostPercent = useMemo(() => {
+    const values: number[] = [];
+    for (const recipe of inventory.recipes) {
+      const product = products.find((p) => p.id === recipe.productId);
+      const cost = recipeCostMinor(recipe, inventory.ingredients);
+      const fc = foodCostPercent(cost, product?.priceMinor ?? 0);
+      if (fc != null) values.push(fc);
+    }
+    if (values.length === 0) return null;
+    return Math.round(values.reduce((sum, n) => sum + n, 0) / values.length);
+  }, [inventory.recipes, inventory.ingredients, products]);
 
   function removeRecipe(recipeId: string) {
     startTransition(async () => {
@@ -303,10 +350,21 @@ export function RecipesPanel({
     });
   }
 
+  const defaultTab =
+    inventory.recipes.length === 0 && withoutRecipe.length > 0
+      ? "pending"
+      : "recipes";
+
   return (
-    <div className="space-y-8">
+    <div className="w-full space-y-8">
       <PageHeaderActions>
         <div className="flex flex-wrap items-center justify-end gap-2">
+          <Button asChild variant="outline" size="sm">
+            <Link href="/products">
+              <UtensilsCrossed className="size-4" />
+              Menú
+            </Link>
+          </Button>
           <Button asChild variant="outline" size="sm">
             <Link href="/inventory">
               <Warehouse className="size-4" />
@@ -324,108 +382,185 @@ export function RecipesPanel({
         </div>
       </PageHeaderActions>
 
-      {withoutRecipe.length > 0 ? (
-        <SoftSection title="Sin receta">
-          <div className="flex flex-wrap gap-2">
-            {withoutRecipe.map((product) => (
-              <div key={product.id} className="flex items-center gap-2 rounded-full bg-muted px-3 py-1 text-sm ring-1 ring-border">
-                <span>{product.name}</span>
-                <RecipeEditorDialog
-                  restaurantId={restaurantId}
-                  products={menuProducts}
-                  ingredients={inventory.ingredients}
-                  productIdPreset={product.id}
-                  canManage={canManage}
-                />
-              </div>
-            ))}
-          </div>
-        </SoftSection>
-      ) : null}
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+        <SoftStat
+          index={0}
+          icon={ClipboardList}
+          label="Fichas técnicas"
+          value={inventory.recipes.length}
+          hint={`${menuProducts.length} productos activos en menú`}
+        />
+        <SoftStat
+          index={3}
+          icon={AlertTriangle}
+          label="Sin receta"
+          value={withoutRecipe.length}
+          hint={
+            withoutRecipe.length > 0
+              ? "Vincula insumos para descontar inventario"
+              : "Todos los ítems activos tienen ficha"
+          }
+        />
+        <SoftStat
+          index={1}
+          icon={ChefHat}
+          label="Food cost medio"
+          value={
+            avgFoodCostPercent != null ? `${avgFoodCostPercent}%` : "—"
+          }
+          hint={
+            avgFoodCostPercent != null
+              ? "Promedio sobre ítems con precio"
+              : "Agrega precio en el menú para calcular"
+          }
+        />
+      </div>
 
-      <SoftSection title="Fichas técnicas">
-        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-          {inventory.recipes.map((recipe, index) => {
-            const product = products.find((p) => p.id === recipe.productId);
-            const cost = recipeCostMinor(recipe, inventory.ingredients);
-            const price = product?.priceMinor ?? 0;
-            const fc = foodCostPercent(cost, price);
-            const margin = grossMarginPercent(cost, price);
+      <Tabs defaultValue={defaultTab} className="w-full">
+        <TabsList className="w-full max-w-none justify-start sm:w-auto">
+          <TabsTrigger value="recipes">
+            Fichas técnicas
+            {inventory.recipes.length > 0 ? (
+              <span className="ml-1.5 tabular-nums text-muted-foreground">
+                ({inventory.recipes.length})
+              </span>
+            ) : null}
+          </TabsTrigger>
+          <TabsTrigger value="pending">
+            Sin receta
+            {withoutRecipe.length > 0 ? (
+              <span className="ml-1.5 tabular-nums text-muted-foreground">
+                ({withoutRecipe.length})
+              </span>
+            ) : null}
+          </TabsTrigger>
+        </TabsList>
 
-            return (
-              <div
-                key={recipe.id}
-                className={cn(
-                  "flex min-h-[180px] flex-col justify-between rounded-[20px] p-4",
-                  index % 3 === 0
-                    ? cosyPastel(index)
-                    : "bg-card text-card-foreground ring-1 ring-border",
-                )}
-              >
-                <div>
-                  <div className="flex items-start justify-between gap-2">
-                    <p className="text-[11px] opacity-70">Receta</p>
-                    {canManage ? (
-                      <div className="flex gap-1">
-                        <RecipeEditorDialog
-                          restaurantId={restaurantId}
-                          products={menuProducts}
-                          ingredients={inventory.ingredients}
-                          recipe={recipe}
-                          canManage={canManage}
-                        />
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="icon"
-                          disabled={pending}
-                          onClick={() => removeRecipe(recipe.id)}
-                        >
-                          <Trash2 className="size-4" />
-                        </Button>
+        <TabsContent value="recipes" className="mt-4 w-full">
+          {inventory.recipes.length === 0 ? (
+            <p className="text-sm text-muted-foreground">
+              Aún no hay recetas. Crea una para vincular ventas con inventario.
+            </p>
+          ) : (
+            <div className={RECIPE_CARD_GRID}>
+              {inventory.recipes.map((recipe) => {
+                const product = products.find((p) => p.id === recipe.productId);
+                const cost = recipeCostMinor(recipe, inventory.ingredients);
+                const price = product?.priceMinor ?? 0;
+                const fc = foodCostPercent(cost, price);
+                const margin = grossMarginPercent(cost, price);
+                const { shown, rest } = ingredientPreview(
+                  recipe,
+                  inventory.ingredients,
+                );
+
+                return (
+                  <div
+                    key={recipe.id}
+                    className="flex min-h-[180px] flex-col justify-between rounded-[20px] bg-card p-4 text-card-foreground ring-1 ring-border"
+                  >
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-start justify-between gap-2">
+                        <p className="min-w-0 text-[11px] text-muted-foreground">
+                          {recipe.lines.length}{" "}
+                          {recipe.lines.length === 1 ? "insumo" : "insumos"}
+                        </p>
+                        {canManage ? (
+                          <div className="-mt-1 -mr-1 flex shrink-0 gap-0.5">
+                            <RecipeEditorDialog
+                              restaurantId={restaurantId}
+                              products={menuProducts}
+                              ingredients={inventory.ingredients}
+                              recipe={recipe}
+                              canManage={canManage}
+                            />
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="icon"
+                              className="size-8"
+                              disabled={pending}
+                              onClick={() => removeRecipe(recipe.id)}
+                              aria-label="Eliminar receta"
+                            >
+                              <Trash2 className="size-4" />
+                            </Button>
+                          </div>
+                        ) : null}
                       </div>
-                    ) : null}
+                      <p className="mt-2 text-base font-semibold leading-snug">
+                        {product?.name ?? recipe.name}
+                      </p>
+                      <p className="mt-1 text-sm tabular-nums text-muted-foreground">
+                        Venta {formatCurrency(price)} · Costo{" "}
+                        {formatCurrency(cost)}
+                      </p>
+                      {price > 0 && fc != null ? (
+                        <p className="mt-1 text-xs text-muted-foreground">
+                          Food cost {fc}%
+                          {margin != null ? ` · Margen ${margin}%` : ""}
+                        </p>
+                      ) : null}
+                      <ul className="mt-3 space-y-0.5 text-[11px] leading-snug text-muted-foreground">
+                        {shown.map((line, i) => (
+                          <li key={i} className="truncate">{line}</li>
+                        ))}
+                        {rest > 0 ? (
+                          <li className="text-muted-foreground/80">
+                            y {rest} más…
+                          </li>
+                        ) : null}
+                      </ul>
+                    </div>
                   </div>
-                  <p className="mt-2 text-base font-semibold leading-snug">
-                    {product?.name ?? recipe.name}
-                  </p>
-                  <p className="mt-1 text-sm opacity-80">
-                    Costo: {formatCurrency(cost)}
-                    {price > 0 && fc != null ? (
-                      <>
-                        {" "}
-                        · Food cost {fc}%
-                        {margin != null ? ` · Margen ${margin}%` : ""}
-                      </>
-                    ) : null}
-                  </p>
+                );
+              })}
+            </div>
+          )}
+        </TabsContent>
+
+        <TabsContent value="pending" className="mt-4 w-full">
+          {withoutRecipe.length === 0 ? (
+            <p className="text-sm text-muted-foreground">
+              Todos los productos activos del menú tienen ficha técnica.
+            </p>
+          ) : (
+            <div className={RECIPE_CARD_GRID}>
+              {withoutRecipe.map((product) => (
+                <div
+                  key={product.id}
+                  className="flex min-h-[150px] flex-col justify-between rounded-[20px] bg-muted/50 p-4 text-card-foreground ring-1 ring-border"
+                >
+                  <div className="min-w-0 flex-1">
+                    <p className="text-[11px] text-muted-foreground">
+                      Pendiente
+                    </p>
+                    <p className="mt-2 text-base font-semibold leading-snug">
+                      {product.name}
+                    </p>
+                    <p className="mt-1 text-sm tabular-nums text-muted-foreground">
+                      {formatCurrency(product.priceMinor)}
+                    </p>
+                  </div>
+                  {canManage ? (
+                    <div
+                      className="-mx-4 -mb-4 mt-3 flex items-center justify-center border-t border-border/60 px-4 py-3"
+                    >
+                      <RecipeEditorDialog
+                        restaurantId={restaurantId}
+                        products={menuProducts}
+                        ingredients={inventory.ingredients}
+                        productIdPreset={product.id}
+                        canManage={canManage}
+                      />
+                    </div>
+                  ) : null}
                 </div>
-                <ul className="mt-3 space-y-1 text-sm opacity-80">
-                  {recipe.lines.map((line) => {
-                    const ingredient = inventory.ingredients.find(
-                      (i) => i.id === line.ingredientId,
-                    );
-                    return (
-                      <li key={line.id}>
-                        {ingredient?.name ?? "Insumo"}: {line.quantity}{" "}
-                        {ingredient?.unit}
-                        {line.wastageBps > 0
-                          ? ` (+${line.wastageBps / 100}% merma)`
-                          : ""}
-                      </li>
-                    );
-                  })}
-                </ul>
-              </div>
-            );
-          })}
-        </div>
-        {inventory.recipes.length === 0 ? (
-          <p className="text-sm text-muted-foreground">
-            Aún no hay recetas. Crea una para vincular ventas con inventario.
-          </p>
-        ) : null}
-      </SoftSection>
+              ))}
+            </div>
+          )}
+        </TabsContent>
+      </Tabs>
     </div>
   );
 }

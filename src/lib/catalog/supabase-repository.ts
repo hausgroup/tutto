@@ -160,6 +160,21 @@ export async function fetchModifiersByIds(
   return ((data ?? []) as ModifierRow[]).map(mapModifier);
 }
 
+export async function deleteCategory(input: {
+  restaurantId: string;
+  categoryId: string;
+}): Promise<void> {
+  const supabase = await createSupabaseServerClient();
+
+  const { error } = await supabase
+    .from("product_categories")
+    .delete()
+    .eq("id", input.categoryId)
+    .eq("restaurant_id", input.restaurantId);
+
+  if (error) throw error;
+}
+
 export async function insertCategory(input: {
   restaurantId: string;
   name: string;
@@ -265,6 +280,31 @@ export async function updateProduct(input: {
 
   if (error) throw error;
   return mapProduct(data as ProductRow);
+}
+
+export async function deleteProduct(input: {
+  restaurantId: string;
+  productId: string;
+}): Promise<void> {
+  const supabase = await createSupabaseServerClient();
+
+  const { count, error: countError } = await supabase
+    .from("order_items")
+    .select("id", { count: "exact", head: true })
+    .eq("product_id", input.productId);
+
+  if (countError) throw countError;
+  if ((count ?? 0) > 0) {
+    throw new Error("PRODUCT_IN_USE");
+  }
+
+  const { error } = await supabase
+    .from("products")
+    .delete()
+    .eq("id", input.productId)
+    .eq("restaurant_id", input.restaurantId);
+
+  if (error) throw error;
 }
 
 export async function setProductActive(input: {

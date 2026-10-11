@@ -51,7 +51,9 @@ Modern restaurant point-of-sale for Colombia — floor management, inventory, ca
    3. `database/migrations/20250924110000_pos_supabase_helpers.sql`
    4. `database/migrations/20250924120000_staff_module.sql`
    5. `database/seed.sql`
-   6. `database/seed-phase3-9.sql` (catálogo, recetas, inventario demo)
+   6. `database/seed-menu-ciao.sql` (menú Ciao desde `temp/menu_ciao.csv`)
+   6b. `database/scripts/purge-legacy-menu-products.sql` (opcional: borra productos demo anteriores)
+   7. `database/seed-phase3-9.sql` (recetas e inventario demo)
 
 4. **First admin user**
 
@@ -86,6 +88,7 @@ Modern restaurant point-of-sale for Colombia — floor management, inventory, ca
 | `npm run start`| Production server        |
 | `npm run lint` | ESLint                   |
 | `npm test`     | Unit tests (Vitest)      |
+| `npm run import:menu` | Carga `temp/menu_ciao.csv` en Supabase (requiere `SUPABASE_SERVICE_ROLE_KEY`) |
 
 ## Project structure
 

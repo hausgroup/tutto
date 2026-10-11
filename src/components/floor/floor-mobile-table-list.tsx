@@ -46,7 +46,7 @@ export function FloorMobileTableList({
             billTotalMinor={billTotalsByTableId?.[table.id]}
             pendingBarDrinks={Boolean(pendingBarDrinksByTableId?.[table.id])}
             busy={openingTableId === table.id}
-            selected={Boolean(highlighted?.has(table.id))}
+            reservePickSelected={Boolean(highlighted?.has(table.id))}
           />
         </div>
       ))}

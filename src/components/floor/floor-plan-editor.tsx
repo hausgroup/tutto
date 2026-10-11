@@ -24,18 +24,12 @@ import {
   DialogTrigger,
 } from "@/components/arc/dialog/dialog";
 import { Input } from "@/components/arc/input/input";
-import { Select } from "@/components/arc/select/select";
 import { Switch } from "@/components/arc/switch/switch";
-import { TableStatusBadge } from "@/components/floor/table-status-badge";
 import type {
   FloorArea,
   FloorSnapshot,
   RestaurantTable,
 } from "@/lib/floor/types";
-import {
-  SALON_EDITABLE_STATUSES,
-  getSalonMeta,
-} from "@/lib/floor/status";
 import {
   FLOOR_TABLE_SLOT_SIZE,
   gridCellToPosition,
@@ -496,7 +490,6 @@ export function FloorPlanEditor({
             </div>
 
             <div className="flex flex-col gap-4">
-              <TableStatusBadge status={selectedTable.status} />
               <Input
                 id="edit-label"
                 label="Etiqueta"
@@ -521,20 +514,6 @@ export function FloorPlanEditor({
                     capacity: Number(event.target.value),
                   })
                 }
-              />
-              <Select
-                label="Estado"
-                value={getSalonMeta(selectedTable.status).tableStatus}
-                onValueChange={(value) =>
-                  updateLocalTable({
-                    ...selectedTable,
-                    status: value as RestaurantTable["status"],
-                  })
-                }
-                options={SALON_EDITABLE_STATUSES.map((status) => ({
-                  value: status,
-                  label: getSalonMeta(status).label,
-                }))}
               />
               <div className="flex items-center justify-between gap-3">
                 <span className="text-sm text-foreground">Activa</span>

@@ -5,6 +5,8 @@ import { resolveAuthContext } from "@/lib/auth/resolve-context";
 import {
   createCategorySchema,
   createProductSchema,
+  deleteCategorySchema,
+  deleteProductSchema,
   setProductActiveSchema,
   updateProductSchema,
 } from "@/lib/catalog/schemas";
@@ -29,6 +31,16 @@ function mapError(error: unknown): CatalogActionState {
         return { error: "Categoría no encontrada." };
       case "PRODUCT_NOT_FOUND":
         return { error: "Producto no encontrado." };
+      case "PRODUCT_IN_USE":
+        return {
+          error:
+            "No se puede eliminar: el producto aparece en pedidos. Ocúltalo del menú en su lugar.",
+        };
+      case "CATEGORY_IN_USE":
+        return {
+          error:
+            "No se puede eliminar: la categoría tiene productos. Muévelos o elimínalos primero.",
+        };
       case "UNAUTHORIZED":
         return { error: "Debes iniciar sesión." };
       default:
@@ -82,6 +94,34 @@ export async function updateProductAction(
     const product = await catalogService.updateProduct(context, parsed);
     revalidateCatalog();
     return { ok: true, product };
+  } catch (error) {
+    return mapError(error);
+  }
+}
+
+export async function deleteCategoryAction(
+  input: unknown,
+): Promise<CatalogActionState> {
+  try {
+    const context = await resolveAuthContext();
+    const parsed = deleteCategorySchema.parse(input);
+    await catalogService.deleteCategory(context, parsed);
+    revalidateCatalog();
+    return { ok: true };
+  } catch (error) {
+    return mapError(error);
+  }
+}
+
+export async function deleteProductAction(
+  input: unknown,
+): Promise<CatalogActionState> {
+  try {
+    const context = await resolveAuthContext();
+    const parsed = deleteProductSchema.parse(input);
+    await catalogService.deleteProduct(context, parsed);
+    revalidateCatalog();
+    return { ok: true };
   } catch (error) {
     return mapError(error);
   }
