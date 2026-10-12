@@ -1,0 +1,14 @@
+-- Grant one auth user admin access to Ciao, Hunter & Butcher, and Haus.
+-- Replace :USER_ID with the Supabase auth.users id (UUID).
+
+-- insert into public.restaurant_memberships (restaurant_id, user_id, role_id, is_active)
+-- select r.id, ':USER_ID'::uuid, roles.id, true
+-- from public.restaurants r
+-- cross join public.roles roles
+-- where roles.slug = 'admin'
+--   and r.id in (
+--     '22222222-2222-4222-8222-222222222222',
+--     '22222222-2222-4222-8222-222222222201',
+--     '22222222-2222-4222-8222-222222222202'
+--   )
+-- on conflict do nothing;

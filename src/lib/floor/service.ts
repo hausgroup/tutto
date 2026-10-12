@@ -130,7 +130,9 @@ export const floorService = {
     const membership = getActiveMembership(context, restaurantId);
     if (!membership) throw new Error("FORBIDDEN");
     if (canUseDemoExperience()) {
-      const table = getDemoFloorStore().tables.find((t) => t.id === tableId);
+      const table = getDemoFloorStore(restaurantId).tables.find(
+        (t) => t.id === tableId,
+      );
       if (table) table.status = status;
       return;
     }

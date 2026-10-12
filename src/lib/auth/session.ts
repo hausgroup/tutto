@@ -1,7 +1,11 @@
 import { cache } from "react";
-import { createSupabaseServerClient } from "@/lib/supabase/server";
+import {
+  readActiveRestaurantCookie,
+  resolveActiveRestaurantId,
+} from "@/lib/auth/active-restaurant";
 import type { AuthContext, PermissionSlug, RestaurantMembership } from "@/lib/auth/permissions";
 import { isSupabaseConfigured } from "@/lib/env";
+import { createSupabaseServerClient } from "@/lib/supabase/server";
 
 type MembershipRow = {
   id: string;
@@ -96,12 +100,17 @@ export const getAuthContext = cache(async (): Promise<AuthContext | null> => {
     mapMembership(row as unknown as MembershipRow),
   );
 
+  const cookieRestaurantId = await readActiveRestaurantCookie();
+
   return {
     userId: user.id,
     email: profile?.email ?? user.email ?? "",
     fullName: profile?.full_name ?? "",
     memberships,
-    activeRestaurantId: memberships[0]?.restaurantId ?? null,
+    activeRestaurantId: resolveActiveRestaurantId(
+      memberships,
+      cookieRestaurantId,
+    ),
   };
 });
 

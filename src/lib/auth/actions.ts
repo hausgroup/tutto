@@ -1,8 +1,15 @@
 "use server";
 
+import { revalidatePath } from "next/cache";
+import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
+import {
+  ACTIVE_RESTAURANT_COOKIE,
+} from "@/lib/auth/active-restaurant";
+import { resolveAuthContext } from "@/lib/auth/resolve-context";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { loginSchema } from "@/schemas/auth";
+import { z } from "zod";
 
 export type AuthActionState = {
   error?: string;
@@ -39,4 +46,42 @@ export async function signOutAction() {
   const supabase = await createSupabaseServerClient();
   await supabase.auth.signOut();
   redirect("/login");
+}
+
+const switchRestaurantSchema = z.object({
+  restaurantId: z.string().uuid(),
+});
+
+export type SwitchRestaurantState = { error?: string };
+
+function revalidateOperationalRoutes() {
+  revalidatePath("/", "layout");
+}
+
+export async function switchRestaurantAction(
+  input: unknown,
+): Promise<SwitchRestaurantState> {
+  try {
+    const { restaurantId } = switchRestaurantSchema.parse(input);
+    const context = await resolveAuthContext();
+    const allowed = context.memberships.some(
+      (m) => m.restaurantId === restaurantId,
+    );
+    if (!allowed) {
+      return { error: "No tienes acceso a ese restaurante." };
+    }
+
+    const jar = await cookies();
+    jar.set(ACTIVE_RESTAURANT_COOKIE, restaurantId, {
+      path: "/",
+      sameSite: "lax",
+      httpOnly: true,
+      maxAge: 60 * 60 * 24 * 365,
+    });
+
+    revalidateOperationalRoutes();
+    return {};
+  } catch {
+    return { error: "No pudimos cambiar de restaurante." };
+  }
 }

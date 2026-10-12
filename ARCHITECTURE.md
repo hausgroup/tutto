@@ -24,6 +24,8 @@ Even for a single location deployment, all restaurant data is scoped by `restaur
 
 Shared catalog or cross-location reporting can be added without rewriting core tables.
 
+**Active restaurant:** users with multiple `restaurant_memberships` choose the operational context via cookie `haus_active_restaurant_id` (set by `switchRestaurantAction`). Server code uses `AuthContext.activeRestaurantId` and `getDefaultRestaurantId()`; all operational data queries are already scoped by `restaurant_id`.
+
 ## Authentication
 
 - **Supabase Auth** for identity (email/password initially).

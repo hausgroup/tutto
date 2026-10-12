@@ -30,7 +30,7 @@ export const staffService = {
     assertCanManage(context, restaurantId);
 
     if (canUseDemoExperience()) {
-      const store = getDemoRestaurantStore();
+      const store = getDemoRestaurantStore(restaurantId);
       return structuredClone({
         members: store.staffMembers.filter(
           (m) => m.restaurantId === restaurantId,
@@ -58,7 +58,7 @@ export const staffService = {
     const email = input.email.trim().toLowerCase();
 
     if (canUseDemoExperience()) {
-      const store = getDemoRestaurantStore();
+      const store = getDemoRestaurantStore(input.restaurantId);
       if (
         store.staffMembers.some(
           (m) =>
@@ -117,7 +117,7 @@ export const staffService = {
     assertCanManage(context, input.restaurantId);
 
     if (canUseDemoExperience()) {
-      const store = getDemoRestaurantStore();
+      const store = getDemoRestaurantStore(input.restaurantId);
       const member = store.staffMembers.find(
         (m) =>
           m.membershipId === input.membershipId &&
@@ -168,7 +168,7 @@ export const staffService = {
     assertCanManage(context, input.restaurantId);
 
     if (canUseDemoExperience()) {
-      const store = getDemoRestaurantStore();
+      const store = getDemoRestaurantStore(input.restaurantId);
       const member = store.staffMembers.find(
         (m) =>
           m.membershipId === input.membershipId &&
@@ -218,7 +218,7 @@ export const staffService = {
     assertCanManage(context, input.restaurantId);
 
     if (canUseDemoExperience()) {
-      const store = getDemoRestaurantStore();
+      const store = getDemoRestaurantStore(input.restaurantId);
       const invite = store.staffInvitations.find(
         (i) =>
           i.id === input.invitationId &&

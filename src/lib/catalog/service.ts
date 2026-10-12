@@ -42,7 +42,7 @@ function assertRestaurant(context: AuthContext, restaurantId: string) {
 const loadCatalogSnapshot = cache(
   async (restaurantId: string): Promise<CatalogSnapshot> => {
     if (canUseDemoExperience()) {
-      return structuredClone(getDemoRestaurantStore().catalog);
+      return structuredClone(getDemoRestaurantStore(restaurantId).catalog);
     }
     return fetchCatalogSnapshot(restaurantId);
   },
@@ -83,7 +83,7 @@ export const catalogService = {
     assertRestaurant(context, input.restaurantId);
 
     if (canUseDemoExperience()) {
-      const store = getDemoRestaurantStore();
+      const store = getDemoRestaurantStore(input.restaurantId);
       const category: ProductCategory = {
         id: randomUUID(),
         restaurantId: input.restaurantId,
@@ -112,7 +112,7 @@ export const catalogService = {
     assertRestaurant(context, input.restaurantId);
 
     if (canUseDemoExperience()) {
-      const store = getDemoRestaurantStore();
+      const store = getDemoRestaurantStore(input.restaurantId);
       const category = store.catalog.categories.find(
         (item) => item.id === input.categoryId,
       );
@@ -160,7 +160,7 @@ export const catalogService = {
     assertRestaurant(context, input.restaurantId);
 
     if (canUseDemoExperience()) {
-      const store = getDemoRestaurantStore();
+      const store = getDemoRestaurantStore(input.restaurantId);
       const product = store.catalog.products.find(
         (item) =>
           item.id === input.productId &&
@@ -213,7 +213,7 @@ export const catalogService = {
     assertRestaurant(context, input.restaurantId);
 
     if (canUseDemoExperience()) {
-      const store = getDemoRestaurantStore();
+      const store = getDemoRestaurantStore(input.restaurantId);
       const index = store.catalog.categories.findIndex(
         (item) =>
           item.id === input.categoryId &&
@@ -240,7 +240,7 @@ export const catalogService = {
     assertRestaurant(context, input.restaurantId);
 
     if (canUseDemoExperience()) {
-      const store = getDemoRestaurantStore();
+      const store = getDemoRestaurantStore(input.restaurantId);
       const index = store.catalog.products.findIndex(
         (item) =>
           item.id === input.productId &&
@@ -262,7 +262,7 @@ export const catalogService = {
     assertRestaurant(context, input.restaurantId);
 
     if (canUseDemoExperience()) {
-      const store = getDemoRestaurantStore();
+      const store = getDemoRestaurantStore(input.restaurantId);
       const product = store.catalog.products.find(
         (item) =>
           item.id === input.productId &&

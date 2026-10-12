@@ -19,7 +19,7 @@ export const feedbackService = {
     assertMember(context, restaurantId);
 
     if (canUseDemoExperience()) {
-      const store = getDemoRestaurantStore();
+      const store = getDemoRestaurantStore(restaurantId);
       return structuredClone(
         store.testFeedback
           .filter((e) => e.restaurantId === restaurantId)
@@ -46,7 +46,7 @@ export const feedbackService = {
     assertMember(context, input.restaurantId);
 
     if (canUseDemoExperience()) {
-      const store = getDemoRestaurantStore();
+      const store = getDemoRestaurantStore(input.restaurantId);
       const entry: TestFeedbackEntry = {
         id: randomUUID(),
         restaurantId: input.restaurantId,

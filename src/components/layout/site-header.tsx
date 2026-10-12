@@ -12,8 +12,8 @@ import { cn } from "@/lib/utils";
 export function SiteHeader() {
   const pathname = usePathname();
   const title = getPageTitle(pathname);
-  const { state, isMobile } = useSidebar();
-  const showTrigger = isMobile || state === "collapsed";
+  const { isMobile } = useSidebar();
+  const showTrigger = isMobile;
   const isPanel = pathname === "/dashboard";
   return (
     <header className="flex min-h-16 shrink-0 flex-wrap items-center gap-x-2 gap-y-2 border-b border-border/70 bg-transparent px-4 py-2 md:px-6 md:py-0 md:h-16">

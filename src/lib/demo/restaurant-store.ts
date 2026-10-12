@@ -12,7 +12,7 @@ import type {
   StaffRoleOption,
 } from "@/lib/staff/types";
 import { createDemoSampleSales } from "@/lib/demo/sample-sales";
-import { DEMO_RESTAURANT_ID } from "@/lib/floor/demo-data";
+import { RESTAURANT_IDS } from "@/lib/restaurants/constants";
 
 export type DemoRestaurantState = {
   catalog: CatalogSnapshot;
@@ -28,8 +28,37 @@ export type DemoRestaurantState = {
   testFeedback: TestFeedbackEntry[];
 };
 
-function createInitialDemoRestaurantState(): DemoRestaurantState {
-  const restaurantId = DEMO_RESTAURANT_ID;
+function createEmptyDemoRestaurantState(restaurantId: string): DemoRestaurantState {
+  return {
+    orderCounter: 1000,
+    siigoPendingCount: 0,
+    staffRoles: [
+      {
+        id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa1",
+        slug: "admin",
+        name: "Administrador",
+      },
+      {
+        id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa2",
+        slug: "staff",
+        name: "Personal",
+      },
+    ],
+    staffMembers: [],
+    staffInvitations: [],
+    catalog: { categories: [], products: [], modifiers: [] },
+    inventory: { ingredients: [], movements: [], recipes: [] },
+    orders: [],
+    payments: [],
+    cashierSessions: [],
+    testFeedback: [],
+  };
+}
+
+function createInitialDemoRestaurantState(restaurantId: string): DemoRestaurantState {
+  if (restaurantId !== RESTAURANT_IDS.ciao) {
+    return createEmptyDemoRestaurantState(restaurantId);
+  }
   const catBurgers = "55555555-5555-4555-8555-555555555501";
   const catDrinks = "55555555-5555-4555-8555-555555555502";
   const burgerProduct = "66666666-6666-4666-8666-666666666601";
@@ -265,18 +294,27 @@ function createInitialDemoRestaurantState(): DemoRestaurantState {
 }
 
 const globalStore = globalThis as unknown as {
-  hausDemoRestaurantStore?: DemoRestaurantState;
+  hausDemoRestaurantStores?: Map<string, DemoRestaurantState>;
 };
 
-export function getDemoRestaurantStore(): DemoRestaurantState {
-  if (!globalStore.hausDemoRestaurantStore) {
-    globalStore.hausDemoRestaurantStore = createInitialDemoRestaurantState();
+export function getDemoRestaurantStore(restaurantId: string): DemoRestaurantState {
+  if (!globalStore.hausDemoRestaurantStores) {
+    globalStore.hausDemoRestaurantStores = new Map();
   }
-  return globalStore.hausDemoRestaurantStore;
+  const map = globalStore.hausDemoRestaurantStores;
+  let state = map.get(restaurantId);
+  if (!state) {
+    state = createInitialDemoRestaurantState(restaurantId);
+    map.set(restaurantId, state);
+  }
+  return state;
 }
 
-export function resetDemoRestaurantStore() {
-  globalStore.hausDemoRestaurantStore = createInitialDemoRestaurantState();
+export function resetDemoRestaurantStore(restaurantId?: string) {
+  if (!globalStore.hausDemoRestaurantStores) return;
+  if (restaurantId) {
+    globalStore.hausDemoRestaurantStores.delete(restaurantId);
+    return;
+  }
+  globalStore.hausDemoRestaurantStores.clear();
 }
-
-export { DEMO_RESTAURANT_ID };

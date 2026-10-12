@@ -27,7 +27,7 @@ async function loadCompletedSales(
   restaurantId: string,
 ): Promise<SiigoSaleCandidate[]> {
   if (canUseDemoExperience()) {
-    const store = getDemoRestaurantStore();
+    const store = getDemoRestaurantStore(restaurantId);
     const paymentsByOrder = new Map<string, string>();
     for (const payment of store.payments) {
       if (payment.status !== "completed") continue;

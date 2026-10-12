@@ -1,4 +1,5 @@
 import { cache } from "react";
+import { readActiveRestaurantCookie } from "@/lib/auth/active-restaurant";
 import {
   PERMISSIONS,
   type AuthContext,
@@ -10,7 +11,8 @@ import { canUseDemoExperience } from "@/lib/env";
 /** Deduped per request — layout + page share one auth round-trip. */
 export const resolveAuthContext = cache(async (): Promise<AuthContext> => {
   if (canUseDemoExperience()) {
-    return getDemoAuthContext();
+    const cookieRestaurantId = await readActiveRestaurantCookie();
+    return getDemoAuthContext(cookieRestaurantId);
   }
   return requireAuthContext();
 });
@@ -18,7 +20,8 @@ export const resolveAuthContext = cache(async (): Promise<AuthContext> => {
 export const resolveOptionalAuthContext = cache(
   async (): Promise<AuthContext | null> => {
     if (canUseDemoExperience()) {
-      return getDemoAuthContext();
+      const cookieRestaurantId = await readActiveRestaurantCookie();
+      return getDemoAuthContext(cookieRestaurantId);
     }
     return getAuthContext();
   },

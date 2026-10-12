@@ -34,7 +34,9 @@ async function loadOrderForPrint(
   orderId: string,
 ): Promise<Order> {
   if (canUseDemoExperience()) {
-    const order = getDemoRestaurantStore().orders.find((o) => o.id === orderId);
+    const order = getDemoRestaurantStore(restaurantId).orders.find(
+      (o) => o.id === orderId,
+    );
     if (!order || order.restaurantId !== restaurantId) {
       throw new Error("ORDER_NOT_FOUND");
     }

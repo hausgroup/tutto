@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { LayoutGrid, UtensilsCrossed } from "lucide-react";
+import { LayoutGrid, PanelLeft } from "lucide-react";
 import {
   Sidebar,
   SidebarContent,
@@ -15,10 +15,11 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
   SidebarRail,
-  SidebarTrigger,
+  useSidebar,
 } from "@/components/ui/sidebar";
 import { Badge } from "@/components/ui/badge";
 import {
+  getActiveMembership,
   membershipHasPermission,
   PERMISSIONS,
   type AuthContext,
@@ -29,6 +30,7 @@ import {
   testingNav,
   type AppNavItem,
 } from "@/lib/navigation";
+import { RestaurantSwitcher } from "@/components/layout/restaurant-switcher";
 
 function NavItems({
   items,
@@ -60,9 +62,26 @@ function NavItems({
   ));
 }
 
+function SidebarCollapseControl() {
+  const { toggleSidebar, state } = useSidebar();
+  const label = state === "collapsed" ? "Expandir panel" : "Colapsar panel";
+  return (
+    <SidebarMenuItem className="mt-4">
+      <SidebarMenuButton
+        type="button"
+        tooltip={label}
+        onClick={toggleSidebar}
+      >
+        <PanelLeft className="cn-rtl-flip" />
+        <span>{label}</span>
+      </SidebarMenuButton>
+    </SidebarMenuItem>
+  );
+}
+
 export function AppSidebar({ auth }: { auth: AuthContext }) {
   const pathname = usePathname();
-  const activeMembership = auth.memberships[0];
+  const activeMembership = getActiveMembership(auth);
   const canManageFloor =
     activeMembership &&
     membershipHasPermission(activeMembership, PERMISSIONS.FLOOR_MANAGE);
@@ -74,26 +93,7 @@ export function AppSidebar({ auth }: { auth: AuthContext }) {
   return (
     <Sidebar variant="inset" collapsible="icon">
       <SidebarHeader>
-        <div className="flex items-center gap-1">
-          <SidebarMenu className="min-w-0 flex-1">
-            <SidebarMenuItem>
-              <SidebarMenuButton size="lg" asChild>
-                <Link href="/dashboard">
-                  <div className="flex aspect-square size-8 items-center justify-center rounded-lg bg-sidebar-primary text-sidebar-primary-foreground">
-                    <UtensilsCrossed className="size-4" />
-                  </div>
-                  <div className="grid flex-1 text-left text-sm leading-tight">
-                    <span className="truncate font-medium">Haus POS</span>
-                    <span className="truncate text-xs text-muted-foreground">
-                      {activeMembership?.restaurantName ?? "Restaurante"}
-                    </span>
-                  </div>
-                </Link>
-              </SidebarMenuButton>
-            </SidebarMenuItem>
-          </SidebarMenu>
-          <SidebarTrigger className="shrink-0 group-data-[collapsible=icon]:hidden" />
-        </div>
+        <RestaurantSwitcher auth={auth} />
       </SidebarHeader>
       <SidebarContent>
         <SidebarGroup>
@@ -155,6 +155,7 @@ export function AppSidebar({ auth }: { auth: AuthContext }) {
               </div>
             </SidebarMenuButton>
           </SidebarMenuItem>
+          <SidebarCollapseControl />
         </SidebarMenu>
       </SidebarFooter>
       <SidebarRail />

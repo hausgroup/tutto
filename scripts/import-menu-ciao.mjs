@@ -14,7 +14,7 @@ const ROOT = join(__dirname, "..");
 const CSV_PATH = join(ROOT, "temp", "menu_ciao.csv");
 const SQL_PATH = join(ROOT, "database", "seed-menu-ciao.sql");
 
-const DEFAULT_RESTAURANT_ID = "22222222-2222-4222-8222-222222222222";
+const DEFAULT_RESTAURANT_ID = "22222222-2222-4222-8222-222222222201";
 const TAX_RATE_BPS = 800;
 
 const BAR_CATEGORIES = new Set([

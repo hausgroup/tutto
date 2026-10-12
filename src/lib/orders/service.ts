@@ -62,9 +62,11 @@ function recalculateOrder(order: Order) {
   recalculateOrderBillTotals(order);
 }
 
-function findTableLabel(tableId: string | null) {
+function findTableLabel(tableId: string | null, restaurantId: string) {
   if (!tableId) return null;
-  const table = getDemoFloorStore().tables.find((t) => t.id === tableId);
+  const table = getDemoFloorStore(restaurantId).tables.find(
+    (t) => t.id === tableId,
+  );
   return table?.label ?? null;
 }
 
@@ -72,7 +74,7 @@ async function catalogCategoriesFor(
   restaurantId: string,
 ): Promise<ProductCategory[]> {
   if (canUseDemoExperience()) {
-    return getDemoRestaurantStore().catalog.categories;
+    return getDemoRestaurantStore(restaurantId).catalog.categories;
   }
   return (await fetchCatalogSnapshot(restaurantId)).categories;
 }
@@ -102,7 +104,9 @@ async function syncTableForOrder(
   if (!next) return;
 
     if (canUseDemoExperience()) {
-      const table = getDemoFloorStore().tables.find((t) => t.id === order.tableId);
+      const table = getDemoFloorStore(restaurantId).tables.find(
+        (t) => t.id === order.tableId,
+      );
       if (table) {
         if (next === "available" && table.status === "reserved") return;
         table.status = next;
@@ -136,7 +140,7 @@ export const orderService = {
   ): Promise<Order | null> {
     getActiveMembership(context, restaurantId);
     if (canUseDemoExperience()) {
-      const store = getDemoRestaurantStore();
+      const store = getDemoRestaurantStore(restaurantId);
       return (
         store.orders.find(
           (o) =>
@@ -169,13 +173,13 @@ export const orderService = {
     }
 
     if (canUseDemoExperience()) {
-      const store = getDemoRestaurantStore();
+      const store = getDemoRestaurantStore(restaurantId);
       store.orderCounter += 1;
       const order: Order = {
         id: randomUUID(),
         restaurantId,
         tableId,
-        tableLabel: findTableLabel(tableId),
+        tableLabel: findTableLabel(tableId, restaurantId),
         orderNumber: store.orderCounter,
         status: "open",
         subtotalMinor: 0,
@@ -219,7 +223,7 @@ export const orderService = {
     }
 
     if (canUseDemoExperience()) {
-      const store = getDemoRestaurantStore();
+      const store = getDemoRestaurantStore(restaurantId);
       const live = store.orders.find((o) => o.id === order.id);
       if (live) {
         live.status = "voided";
@@ -260,7 +264,7 @@ export const orderService = {
     if (orderHasSentBill(order)) return;
 
     if (canUseDemoExperience()) {
-      const store = getDemoRestaurantStore();
+      const store = getDemoRestaurantStore(restaurantId);
       const live = store.orders.find((o) => o.id === order.id);
       if (live) {
         live.items = [];
@@ -311,7 +315,7 @@ export const orderService = {
     requirePermission(context, PERMISSIONS.ORDERS_MODIFY, input.restaurantId);
 
     if (canUseDemoExperience()) {
-      const store = getDemoRestaurantStore();
+      const store = getDemoRestaurantStore(input.restaurantId);
       const order = store.orders.find((o) => o.id === input.orderId);
       if (!order || order.status === "completed") throw new Error("ORDER_NOT_FOUND");
 
@@ -459,7 +463,7 @@ export const orderService = {
     if (input.delta === 0) {
       const existing = canUseDemoExperience()
         ? structuredClone(
-            getDemoRestaurantStore().orders.find((o) => o.id === input.orderId)!,
+            getDemoRestaurantStore(input.restaurantId).orders.find((o) => o.id === input.orderId)!,
           )
         : (await ordersDb.fetchOrderById(input.orderId))!;
       return existing;
@@ -468,7 +472,7 @@ export const orderService = {
     if (input.delta > 0) {
       // Prefer merging into an existing pending line for the same product
       if (canUseDemoExperience()) {
-        const store = getDemoRestaurantStore();
+        const store = getDemoRestaurantStore(input.restaurantId);
         const order = store.orders.find((o) => o.id === input.orderId);
         if (!order || order.status === "completed") {
           throw new Error("ORDER_NOT_FOUND");
@@ -543,7 +547,7 @@ export const orderService = {
     const removeCount = Math.abs(input.delta);
 
     if (canUseDemoExperience()) {
-      const store = getDemoRestaurantStore();
+      const store = getDemoRestaurantStore(input.restaurantId);
       const order = store.orders.find((o) => o.id === input.orderId);
       if (!order || order.status === "completed") {
         throw new Error("ORDER_NOT_FOUND");
@@ -660,7 +664,7 @@ export const orderService = {
     requirePermission(context, PERMISSIONS.ORDERS_MODIFY, input.restaurantId);
 
     if (canUseDemoExperience()) {
-      const store = getDemoRestaurantStore();
+      const store = getDemoRestaurantStore(input.restaurantId);
       const order = store.orders.find((o) => o.id === input.orderId);
       if (!order || order.status === "completed") {
         throw new Error("ORDER_NOT_FOUND");
@@ -802,7 +806,7 @@ export const orderService = {
     };
 
     if (canUseDemoExperience()) {
-      const store = getDemoRestaurantStore();
+      const store = getDemoRestaurantStore(input.restaurantId);
       const order = store.orders.find((o) => o.id === input.orderId);
       if (!order || order.status === "completed") {
         throw new Error("ORDER_NOT_FOUND");
@@ -933,7 +937,7 @@ export const orderService = {
     requirePermission(context, PERMISSIONS.ORDERS_MODIFY, restaurantId);
 
     if (canUseDemoExperience()) {
-      const store = getDemoRestaurantStore();
+      const store = getDemoRestaurantStore(restaurantId);
       const order = store.orders.find((o) => o.id === orderId);
       if (!order) throw new Error("ORDER_NOT_FOUND");
 
@@ -978,7 +982,7 @@ export const orderService = {
     requirePermission(context, PERMISSIONS.PAYMENTS_PROCESS, restaurantId);
 
     if (canUseDemoExperience()) {
-      const store = getDemoRestaurantStore();
+      const store = getDemoRestaurantStore(restaurantId);
       const order = store.orders.find((o) => o.id === orderId);
       if (!order || order.restaurantId !== restaurantId) {
         throw new Error("ORDER_NOT_FOUND");
@@ -1025,7 +1029,7 @@ export const orderService = {
     if (input.amountMinor <= 0) throw new Error("INVALID_PAYMENT_AMOUNT");
 
     if (canUseDemoExperience()) {
-      const store = getDemoRestaurantStore();
+      const store = getDemoRestaurantStore(input.restaurantId);
       const order = store.orders.find((o) => o.id === input.orderId);
       if (!order) throw new Error("ORDER_NOT_FOUND");
 
@@ -1177,7 +1181,7 @@ export const orderService = {
   async listOrders(context: AuthContext, restaurantId: string) {
     getActiveMembership(context, restaurantId);
     if (canUseDemoExperience()) {
-      return structuredClone(getDemoRestaurantStore().orders);
+      return structuredClone(getDemoRestaurantStore(restaurantId).orders);
     }
     return ordersDb.listOrders(restaurantId);
   },
@@ -1191,7 +1195,7 @@ export const orderService = {
     const totals: Record<string, number> = {};
 
     if (canUseDemoExperience()) {
-      for (const order of getDemoRestaurantStore().orders) {
+      for (const order of getDemoRestaurantStore(restaurantId).orders) {
         if (
           order.restaurantId !== restaurantId ||
           !order.tableId ||
@@ -1217,7 +1221,7 @@ export const orderService = {
     getActiveMembership(context, restaurantId);
 
     if (canUseDemoExperience()) {
-      return pendingBarDrinksByTableFromOrders(getDemoRestaurantStore().orders);
+      return pendingBarDrinksByTableFromOrders(getDemoRestaurantStore(restaurantId).orders);
     }
 
     return ordersDb.fetchPendingBarDrinksByTableId(restaurantId);
@@ -1229,7 +1233,7 @@ export const cashierService = {
     getActiveMembership(context, restaurantId);
     if (canUseDemoExperience()) {
       return (
-        getDemoRestaurantStore().cashierSessions.find(
+        getDemoRestaurantStore(restaurantId).cashierSessions.find(
           (s) => s.status === "open" && s.restaurantId === restaurantId,
         ) ?? null
       );
@@ -1245,7 +1249,7 @@ export const cashierService = {
     requirePermission(context, PERMISSIONS.CASHIER_MANAGE, restaurantId);
 
     if (canUseDemoExperience()) {
-      const store = getDemoRestaurantStore();
+      const store = getDemoRestaurantStore(restaurantId);
       if (store.cashierSessions.some((s) => s.status === "open")) {
         throw new Error("SESSION_ALREADY_OPEN");
       }
@@ -1287,7 +1291,7 @@ export const cashierService = {
     requirePermission(context, PERMISSIONS.CASHIER_MANAGE, input.restaurantId);
 
     if (canUseDemoExperience()) {
-      const store = getDemoRestaurantStore();
+      const store = getDemoRestaurantStore(input.restaurantId);
       const session = store.cashierSessions.find((s) => s.id === input.sessionId);
       if (!session || session.status !== "open") throw new Error("SESSION_NOT_FOUND");
 
@@ -1344,7 +1348,7 @@ export const reportService = {
     }
 
     if (canUseDemoExperience()) {
-      const store = getDemoRestaurantStore();
+      const store = getDemoRestaurantStore(restaurantId);
       const completed = store.orders.filter((o) => {
         if (o.status !== "completed") return false;
         if (period === "today") {
@@ -1398,7 +1402,7 @@ export const reportService = {
     }
 
     if (canUseDemoExperience()) {
-      const store = getDemoRestaurantStore();
+      const store = getDemoRestaurantStore(restaurantId);
       const { fetchHistoricalSalesForMonth } = await import(
         "@/lib/reports/historical-sales/repository"
       );

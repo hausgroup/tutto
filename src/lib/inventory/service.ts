@@ -76,7 +76,7 @@ export const inventoryService = {
     const membership = getActiveMembership(context, restaurantId);
     if (!membership) throw new Error("RESTAURANT_NOT_FOUND");
     if (canUseDemoExperience()) {
-      return structuredClone(getDemoRestaurantStore().inventory);
+      return structuredClone(getDemoRestaurantStore(restaurantId).inventory);
     }
     return fetchInventorySnapshot(restaurantId);
   },
@@ -100,7 +100,7 @@ export const inventoryService = {
     },
   ): Promise<Ingredient> {
     if (canUseDemoExperience()) {
-      const store = getDemoRestaurantStore();
+      const store = getDemoRestaurantStore(input.restaurantId);
       const ingredient: Ingredient = {
         id: randomUUID(),
         restaurantId: input.restaurantId,
@@ -158,7 +158,7 @@ export const inventoryService = {
     },
   ): Promise<Ingredient> {
     if (canUseDemoExperience()) {
-      const store = getDemoRestaurantStore();
+      const store = getDemoRestaurantStore(input.restaurantId);
       const ingredient = store.inventory.ingredients.find(
         (i) => i.id === input.ingredientId,
       );
@@ -209,7 +209,7 @@ export const inventoryService = {
     }
 
     if (canUseDemoExperience()) {
-      return demoApplyMovement(getDemoRestaurantStore(), {
+      return demoApplyMovement(getDemoRestaurantStore(input.restaurantId), {
         restaurantId: input.restaurantId,
         ingredientId: input.ingredientId,
         movementType: input.movementType,
@@ -264,7 +264,7 @@ export const inventoryService = {
     },
   ): Promise<Recipe> {
     if (canUseDemoExperience()) {
-      const store = getDemoRestaurantStore();
+      const store = getDemoRestaurantStore(input.restaurantId);
       const existing = store.inventory.recipes.find(
         (r) => r.productId === input.productId,
       );
@@ -301,7 +301,7 @@ export const inventoryService = {
     recipeId: string,
   ) {
     if (canUseDemoExperience()) {
-      const store = getDemoRestaurantStore();
+      const store = getDemoRestaurantStore(restaurantId);
       store.inventory.recipes = store.inventory.recipes.filter(
         (r) => r.id !== recipeId,
       );
@@ -318,7 +318,7 @@ export const inventoryService = {
     referenceId?: string | null,
   ) {
     if (canUseDemoExperience()) {
-      const store = getDemoRestaurantStore();
+      const store = getDemoRestaurantStore(restaurantId);
       const recipe = store.inventory.recipes.find(
         (r) => r.productId === productId,
       );

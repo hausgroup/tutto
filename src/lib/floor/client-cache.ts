@@ -117,6 +117,11 @@ export function patchCachedFloorPendingBarDrinks(
   cached = { ...cached, pendingBarDrinksByTableId: next };
 }
 
+export function invalidateFloorClientCache() {
+  cached = null;
+  pending = null;
+}
+
 export function warmFloorBoot(options?: {
   force?: boolean;
 }): Promise<FloorBootstrap> {

@@ -64,26 +64,58 @@ insert into public.restaurants (
 ) values (
   '22222222-2222-4222-8222-222222222222',
   '11111111-1111-4111-8111-111111111111',
-  'Haus Demo',
-  'haus-demo',
+  'Haus',
+  'haus',
   'Calle 85 #12-34',
   'Bogotá',
   '+57 300 000 0000'
 )
-on conflict (id) do nothing;
+on conflict (id) do update set
+  name = excluded.name,
+  slug = excluded.slug;
 
+insert into public.restaurants (
+  id,
+  business_id,
+  name,
+  slug,
+  city
+) values
+  (
+    '22222222-2222-4222-8222-222222222201',
+    '11111111-1111-4111-8111-111111111111',
+    'Ciao',
+    'ciao',
+    'Bogotá'
+  ),
+  (
+    '22222222-2222-4222-8222-222222222202',
+    '11111111-1111-4111-8111-111111111111',
+    'Hunter & Butcher',
+    'hunter-butcher',
+    'Bogotá'
+  )
+on conflict (id) do update set
+  name = excluded.name,
+  slug = excluded.slug;
+
+-- Ciao: starter floor (replace via editor or move-operational-data-to-ciao.sql)
 insert into public.floor_areas (id, restaurant_id, name, sort_order) values
-  ('33333333-3333-4333-8333-333333333301', '22222222-2222-4222-8222-222222222222', 'Salón principal', 1),
-  ('33333333-3333-4333-8333-333333333302', '22222222-2222-4222-8222-222222222222', 'Terraza', 2)
-on conflict (id) do nothing;
+  ('33333333-3333-4333-8333-333333333301', '22222222-2222-4222-8222-222222222201', 'Salón principal', 1),
+  ('33333333-3333-4333-8333-333333333302', '22222222-2222-4222-8222-222222222201', 'Terraza', 2)
+on conflict (id) do update set
+  restaurant_id = excluded.restaurant_id,
+  name = excluded.name;
 
 insert into public.restaurant_tables (
   id, restaurant_id, floor_area_id, label, capacity, status, pos_x, pos_y, width, height
 ) values
-  ('44444444-4444-4444-8444-444444444401', '22222222-2222-4222-8222-222222222222', '33333333-3333-4333-8333-333333333301', 'M1', 2, 'available', 40, 40, 72, 72),
-  ('44444444-4444-4444-8444-444444444402', '22222222-2222-4222-8222-222222222222', '33333333-3333-4333-8333-333333333301', 'M2', 4, 'available', 140, 40, 96, 72),
-  ('44444444-4444-4444-8444-444444444403', '22222222-2222-4222-8222-222222222222', '33333333-3333-4333-8333-333333333302', 'T1', 4, 'available', 40, 40, 96, 72)
-on conflict (id) do nothing;
+  ('44444444-4444-4444-8444-444444444401', '22222222-2222-4222-8222-222222222201', '33333333-3333-4333-8333-333333333301', 'M1', 2, 'available', 40, 40, 72, 72),
+  ('44444444-4444-4444-8444-444444444402', '22222222-2222-4222-8222-222222222201', '33333333-3333-4333-8333-333333333301', 'M2', 4, 'available', 140, 40, 96, 72),
+  ('44444444-4444-4444-8444-444444444403', '22222222-2222-4222-8222-222222222201', '33333333-3333-4333-8333-333333333302', 'T1', 4, 'available', 40, 40, 96, 72)
+on conflict (id) do update set
+  restaurant_id = excluded.restaurant_id,
+  floor_area_id = excluded.floor_area_id;
 
 -- Full Ciao menu: run database/seed-menu-ciao.sql (or node scripts/import-menu-ciao.mjs)
 
@@ -93,6 +125,14 @@ insert into public.payment_methods (restaurant_id, code, name, sort_order) value
   ('22222222-2222-4222-8222-222222222222', 'transfer', 'Transferencia', 3)
 on conflict (restaurant_id, code) do nothing;
 
--- Link demo admin membership after creating auth user (replace USER_ID):
--- insert into public.restaurant_memberships (restaurant_id, user_id, role_id)
--- select '22222222-2222-4222-8222-222222222222', '<USER_ID>', id from public.roles where slug = 'admin';
+-- Link owner/admin to all three restaurants (replace USER_ID):
+-- insert into public.restaurant_memberships (restaurant_id, user_id, role_id, is_active)
+-- select r.id, '<USER_ID>'::uuid, roles.id, true
+-- from public.restaurants r
+-- cross join public.roles roles
+-- where roles.slug = 'admin'
+--   and r.id in (
+--     '22222222-2222-4222-8222-222222222222',
+--     '22222222-2222-4222-8222-222222222201',
+--     '22222222-2222-4222-8222-222222222202'
+--   );

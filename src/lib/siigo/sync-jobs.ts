@@ -9,7 +9,7 @@ export async function enqueueSiigoSyncJob(input: {
   operation: string;
 }) {
   if (canUseDemoExperience()) {
-    const store = getDemoRestaurantStore();
+    const store = getDemoRestaurantStore(input.restaurantId);
     store.siigoPendingCount += 1;
     return;
   }
@@ -31,7 +31,7 @@ export async function enqueueSiigoSyncJob(input: {
 
 export async function getSiigoPendingCount(restaurantId: string) {
   if (canUseDemoExperience()) {
-    return getDemoRestaurantStore().siigoPendingCount;
+    return getDemoRestaurantStore(restaurantId).siigoPendingCount;
   }
 
   const supabase = await createSupabaseServerClient();
