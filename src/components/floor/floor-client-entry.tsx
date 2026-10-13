@@ -19,7 +19,10 @@ function FloorChrome({ boot }: { boot: FloorBootstrap }) {
   const [reservePickActive, setReservePickActive] = useState(false);
 
   return (
-    <div className="flex min-h-[calc(100dvh-7.5rem)] flex-col gap-3 md:min-h-[calc(100dvh-8.5rem)]">
+    <div
+      data-floor-chrome
+      className="flex min-h-[calc(100dvh-7.5rem)] flex-col gap-3 md:min-h-[calc(100dvh-8.5rem)]"
+    >
       <PageHeaderActions>
         <div className="flex flex-wrap items-center justify-end gap-2">
           <Button

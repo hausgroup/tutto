@@ -58,7 +58,8 @@ function NavItems({
 }
 
 function SidebarCollapseControl() {
-  const { toggleSidebar, state } = useSidebar();
+  const { toggleSidebar, state, isCompactNav } = useSidebar();
+  if (isCompactNav) return null;
   const label = state === "collapsed" ? "Expandir panel" : "Colapsar panel";
   return (
     <SidebarMenuItem className="mt-4">

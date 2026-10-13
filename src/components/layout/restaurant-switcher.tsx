@@ -59,8 +59,8 @@ export function RestaurantSwitcher({
 }) {
   const router = useRouter();
   const pathname = usePathname();
-  const { state, isMobile } = useSidebar();
-  const collapsed = state === "collapsed" && !isMobile;
+  const { state, isCompactNav } = useSidebar();
+  const collapsed = state === "collapsed" && !isCompactNav;
   const active = getActiveMembership(auth);
   const options = useMemo(
     () => orderedMemberships(auth.memberships),

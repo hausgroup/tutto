@@ -1,0 +1,2 @@
+/** Runs in <head> before paint — enables immersive shell when launched from home screen. */
+export const STANDALONE_BLOCKING_SCRIPT = `(function(){try{var s=window.navigator.standalone===true||window.matchMedia("(display-mode: standalone)").matches||window.matchMedia("(display-mode: fullscreen)").matches;if(s){document.documentElement.dataset.standalone="true";document.documentElement.dataset.compactNav="true"}}catch(e){}})();`;
