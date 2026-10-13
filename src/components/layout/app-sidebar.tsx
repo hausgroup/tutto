@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { LayoutGrid, PanelLeft } from "lucide-react";
+import { PanelLeft } from "lucide-react";
 import {
   Sidebar,
   SidebarContent,
@@ -24,12 +24,7 @@ import {
   PERMISSIONS,
   type AuthContext,
 } from "@/lib/auth/permissions";
-import {
-  adminNav,
-  operationNav,
-  testingNav,
-  type AppNavItem,
-} from "@/lib/navigation";
+import { adminNav, operationNav, type AppNavItem } from "@/lib/navigation";
 import { RestaurantSwitcher } from "@/components/layout/restaurant-switcher";
 
 function NavItems({
@@ -104,14 +99,6 @@ export function AppSidebar({ auth }: { auth: AuthContext }) {
             </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>
-        <SidebarGroup>
-          <SidebarGroupLabel>Pruebas</SidebarGroupLabel>
-          <SidebarGroupContent>
-            <SidebarMenu>
-              <NavItems items={testingNav} pathname={pathname} />
-            </SidebarMenu>
-          </SidebarGroupContent>
-        </SidebarGroup>
         {showAdmin ? (
           <SidebarGroup>
             <SidebarGroupLabel>Administración</SidebarGroupLabel>
@@ -119,23 +106,11 @@ export function AppSidebar({ auth }: { auth: AuthContext }) {
               <SidebarMenu>
                 <NavItems
                   items={adminNav.filter((item) => {
-                    if (item.href === "/floor/editor")
-                      return Boolean(canManageFloor);
                     if (item.href === "/staff") return Boolean(canManageStaff);
                     return true;
                   })}
                   pathname={pathname}
                 />
-                {canManageFloor ? (
-                  <SidebarMenuItem>
-                    <SidebarMenuButton asChild tooltip="Vista operativa">
-                      <Link href="/floor">
-                        <LayoutGrid />
-                        <span>Vista operativa</span>
-                      </Link>
-                    </SidebarMenuButton>
-                  </SidebarMenuItem>
-                ) : null}
               </SidebarMenu>
             </SidebarGroupContent>
           </SidebarGroup>

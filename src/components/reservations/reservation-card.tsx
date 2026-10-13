@@ -4,12 +4,11 @@ import type { ReactNode } from "react";
 import { Users } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import type { ReservationOverviewItem } from "@/lib/floor/reservations-overview";
-import { cn } from "@/lib/utils";
 
 const TIME_ZONE = "America/Bogota";
 
 export function formatReservationTime(iso: string | null) {
-  if (!iso) return "—";
+  if (!iso) return null;
   const parts = new Intl.DateTimeFormat("en-US", {
     timeZone: TIME_ZONE,
     hour: "numeric",
@@ -23,12 +22,25 @@ export function formatReservationTime(iso: string | null) {
   return `${hour}:${minute} ${period}`;
 }
 
-export function formatReservationDay(iso: string) {
-  return new Intl.DateTimeFormat("es-CO", {
+function formatReservationDateLabel(iso: string | null) {
+  if (!iso) return "Sin programar";
+  const raw = new Intl.DateTimeFormat("es-CO", {
     timeZone: TIME_ZONE,
+    weekday: "short",
     day: "numeric",
     month: "short",
+    year: "numeric",
   }).format(new Date(iso));
+  return raw.charAt(0).toUpperCase() + raw.slice(1);
+}
+
+const timePillClass =
+  "inline-flex shrink-0 items-center rounded-full bg-muted px-2.5 py-1 text-[13px] font-semibold leading-none tabular-nums text-foreground ring-1 ring-border";
+
+function formatTablesLine(item: ReservationOverviewItem) {
+  return item.tables
+    .map((table) => `${table.label} (${table.areaName})`)
+    .join(", ");
 }
 
 export function ReservationSectionTitle({
@@ -70,96 +82,77 @@ export function ReservationList({ children }: { children: ReactNode }) {
 
 export function ReservationCard({
   item,
-  showTime = true,
-  showDate = false,
   onCancel,
   cancelPending = false,
 }: {
   item: ReservationOverviewItem;
-  showTime?: boolean;
-  showDate?: boolean;
   onCancel?: (item: ReservationOverviewItem) => void;
   cancelPending?: boolean;
 }) {
-  const tableLabels = item.tables.map((table) => table.label).join(", ");
-  const tableLine = item.tables
-    .map((table) => `${table.label} (${table.areaName})`)
-    .join(", ");
-  const detail = [tableLine, item.occasion].filter(Boolean).join(" · ");
+  const tableLine = formatTablesLine(item);
+  const timeLabel = formatReservationTime(item.scheduledAt);
+  const dateLabel = formatReservationDateLabel(item.scheduledAt);
   const overCapacity = item.partySize > item.totalCapacity;
   const partyLabel = item.partySize === 1 ? "persona" : "personas";
 
   return (
     <li className="border-b border-border last:border-b-0">
       <article
-        className={cn(
-          "grid items-center gap-x-4 px-4 py-3.5",
-          onCancel
-            ? "grid-cols-[4.75rem_minmax(0,1fr)_auto]"
-            : "grid-cols-[4.75rem_minmax(0,1fr)]",
-        )}
+        className="flex items-stretch gap-3 px-4 py-3.5"
+        aria-label={`${item.guestName}, ${timeLabel ?? "sin hora"}, ${item.partySize} ${partyLabel}`}
       >
-        <div className="flex flex-col gap-0.5 text-right">
-          {showTime ? (
-            <>
-              <time
-                className="block whitespace-nowrap text-[15px] font-semibold leading-5 tabular-nums"
-                dateTime={item.scheduledAt ?? undefined}
-              >
-                {formatReservationTime(item.scheduledAt)}
-              </time>
-              {showDate && item.scheduledAt ? (
-                <p className="text-[13px] leading-5 text-muted-foreground">
-                  {formatReservationDay(item.scheduledAt)}
-                </p>
-              ) : null}
-            </>
-          ) : (
-            <span className="text-[13px] font-medium leading-5 text-muted-foreground">
-              Sin hora
-            </span>
-          )}
-          <p
-            className="inline-flex items-center justify-end gap-1 text-[13px] leading-5 tabular-nums text-muted-foreground"
+        <div className="flex min-w-0 flex-1 flex-col gap-1">
+          <div className="flex min-w-0 items-center gap-2">
+            <h3 className="min-w-0 truncate text-[15px] font-semibold leading-5 tracking-tight text-foreground">
+              {item.guestName}
+            </h3>
+            <time
+              className={timePillClass}
+              dateTime={item.scheduledAt ?? undefined}
+            >
+              {timeLabel ?? "Sin hora"}
+            </time>
+          </div>
+
+          <p className="text-[13px] leading-5 text-muted-foreground">
+            <span className="text-foreground/80">Fecha:</span> {dateLabel}
+            <span className="mx-1.5 text-border" aria-hidden>·</span>
+            <span className="text-foreground/80">Mesas:</span> {tableLine}
+            <span className="mx-1.5 text-border" aria-hidden>·</span>
+            <span className="text-foreground/80">Ocasión:</span> {item.occasion}
+          </p>
+
+          {overCapacity ? (
+            <p className="text-[13px] leading-5 text-amber-800 dark:text-amber-200">
+              El grupo ({item.partySize}) supera la capacidad (
+              {item.totalCapacity}).
+            </p>
+          ) : null}
+        </div>
+
+        <div className="flex shrink-0 items-center gap-4 self-center">
+          <span
+            className="inline-flex items-center gap-1 text-[15px] font-semibold leading-none tabular-nums text-foreground"
             title={`${item.partySize} ${partyLabel}`}
           >
-            <Users className="size-3.5 shrink-0" aria-hidden />
+            <Users className="size-4 shrink-0 opacity-75" aria-hidden />
             <span>{item.partySize}</span>
             <span className="sr-only">{partyLabel}</span>
-          </p>
-        </div>
-        <div className="min-w-0 py-0.5">
-          <h3 className="truncate text-[15px] font-semibold leading-5 tracking-tight">
-            {item.guestName}
-          </h3>
-          {detail ? (
-            <p
-              className="mt-0.5 truncate text-[13px] leading-5 text-muted-foreground"
-              title={detail}
+          </span>
+          {onCancel ? (
+            <Button
+              type="button"
+              variant="destructive"
+              size="sm"
+              className="shrink-0"
+              disabled={cancelPending}
+              onClick={() => onCancel(item)}
             >
-              {item.tables.length === 1 ? "Mesa" : "Mesas"} {detail}
-            </p>
-          ) : null}
-          {overCapacity ? (
-            <p className="mt-1 text-[13px] leading-5 text-amber-800 dark:text-amber-200">
-              El grupo ({item.partySize}) supera la capacidad ({item.totalCapacity}).
-            </p>
+              {cancelPending ? "Cancelando…" : "Cancelar"}
+            </Button>
           ) : null}
         </div>
-        {onCancel ? (
-          <Button
-            type="button"
-            variant="destructive"
-            size="sm"
-            className="shrink-0"
-            disabled={cancelPending}
-            onClick={() => onCancel(item)}
-          >
-            {cancelPending ? "Cancelando…" : "Cancelar"}
-          </Button>
-        ) : null}
       </article>
-      <p className="sr-only">Mesas: {tableLabels}</p>
     </li>
   );
 }

@@ -204,15 +204,26 @@ export class DemoFloorRepository implements FloorRepository {
     const updated: RestaurantTable[] = [];
 
     const store = this.storeFor(input.restaurantId);
+    let totalCapacity = 0;
     for (const tableId of uniqueIds) {
       const table = store.tables.find((item) => item.id === tableId);
       if (!table) throw new Error("TABLE_NOT_FOUND");
+      totalCapacity += table.capacity;
       if (
         table.status !== "available" &&
         table.status !== "reserved"
       ) {
         throw new Error("TABLE_NOT_AVAILABLE");
       }
+    }
+
+    if (input.partySize > totalCapacity) {
+      throw new Error("PARTY_EXCEEDS_TABLE_CAPACITY");
+    }
+
+    for (const tableId of uniqueIds) {
+      const table = store.tables.find((item) => item.id === tableId);
+      if (!table) throw new Error("TABLE_NOT_FOUND");
       table.status = "reserved";
       table.reservation = {
         guestName: input.guestName,

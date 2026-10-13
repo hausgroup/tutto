@@ -1,3 +1,5 @@
+import type { StaffWorkAreaId } from "@/lib/staff/work-areas";
+
 export type StaffRoleSlug = "admin" | "staff";
 
 export type StaffMember = {
@@ -6,6 +8,10 @@ export type StaffMember = {
   restaurantId: string;
   email: string;
   fullName: string;
+  phone: string | null;
+  birthDate: string | null;
+  workArea: StaffWorkAreaId | null;
+  hiredAt: string | null;
   roleSlug: StaffRoleSlug;
   roleName: string;
   roleId: string;

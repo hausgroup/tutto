@@ -72,6 +72,7 @@ import {
   patchCachedFloorCancelReservation,
   patchCachedFloorPendingBarDrinks,
   patchCachedFloorTableStatus,
+  getCachedFloorBoot,
   refreshFloorBootInBackground,
   warmFloorBoot,
 } from "@/lib/floor/client-cache";
@@ -171,12 +172,15 @@ export function MobilePosView({
 
   const tableForReserve = useMemo((): RestaurantTable | null => {
     if (!order.tableId) return null;
+    const floorTable = getCachedFloorBoot()?.snapshot.tables.find(
+      (table) => table.id === order.tableId,
+    );
     return {
       id: order.tableId,
       restaurantId: order.restaurantId,
-      floorAreaId: "",
+      floorAreaId: floorTable?.floorAreaId ?? "",
       label: tableLabel,
-      capacity: 4,
+      capacity: floorTable?.capacity ?? 4,
       status: activeReservation ? "reserved" : "available",
       posX: 0,
       posY: 0,
@@ -1296,6 +1300,10 @@ export function MobilePosView({
         onReserved={(updated) =>
           setActiveReservation(updated[0]?.reservation ?? null)
         }
+        onReserveFailed={() => {
+          setActiveReservation(tableReservation ?? null);
+          refreshFloorBootInBackground();
+        }}
       />
     </div>
   );

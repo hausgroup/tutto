@@ -21,6 +21,7 @@ export function TableReservationFormFields({
   onDateYmdChange,
   timeHm,
   onTimeHmChange,
+  maxPartySize,
   disabled = false,
 }: {
   idPrefix: string;
@@ -34,8 +35,10 @@ export function TableReservationFormFields({
   onDateYmdChange: (value: string) => void;
   timeHm: string;
   onTimeHmChange: (value: string) => void;
+  maxPartySize: number;
   disabled?: boolean;
 }) {
+  const partyMax = Math.max(1, maxPartySize);
   const dateId = `${idPrefix}-date`;
   const timeId = `${idPrefix}-time`;
 
@@ -79,11 +82,15 @@ export function TableReservationFormFields({
             type="number"
             inputMode="numeric"
             min={1}
-            max={99}
+            max={partyMax}
             value={partySize}
             onChange={(event) => onPartySizeChange(event.target.value)}
             disabled={disabled}
           />
+          <p className="text-xs text-muted-foreground">
+            Máximo {partyMax}{" "}
+            {partyMax === 1 ? "persona" : "personas"} (capacidad de las mesas)
+          </p>
         </ModalFormField>
         <ModalFormField label="Ocasión" htmlFor={`${idPrefix}-occasion`}>
           <Input

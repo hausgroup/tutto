@@ -16,6 +16,7 @@ import { useIsMobile } from "@/hooks/use-mobile";
 import { warmPosCatalog, warmPosTable } from "@/lib/pos/client-cache";
 import { persistStaffNameForTable } from "@/lib/pos/staff-attendant";
 import { effectiveOperationalStatus } from "@/lib/floor/status";
+import { refreshFloorBootInBackground } from "@/lib/floor/client-cache";
 import { cn } from "@/lib/utils";
 
 function posHref(table: RestaurantTable, staffName?: string) {
@@ -304,6 +305,11 @@ export function FloorPlanView({
           setReserveDialogOpen(open);
         }}
         onReserved={handleReserved}
+        onReserveFailed={() => {
+          refreshFloorBootInBackground((boot) => {
+            setLiveSnapshot(boot.snapshot);
+          });
+        }}
       />
 
       <Dialog

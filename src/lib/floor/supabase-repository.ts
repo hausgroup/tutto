@@ -340,8 +340,10 @@ export class SupabaseFloorRepository implements FloorRepository {
       throw new Error("TABLE_NOT_FOUND");
     }
 
+    let totalCapacity = 0;
     for (const row of rows ?? []) {
       const current = mapTable(row as TableRow);
+      totalCapacity += current.capacity;
       if (
         current.status !== "available" &&
         current.status !== "reserved"
@@ -350,28 +352,34 @@ export class SupabaseFloorRepository implements FloorRepository {
       }
     }
 
-    const updated: RestaurantTable[] = [];
-    for (const tableId of uniqueIds) {
-      const { data, error } = await supabase
-        .from("restaurant_tables")
-        .update({
-          status: "reserved",
-          reservation_guest_name: input.guestName,
-          reservation_party_size: input.partySize,
-          reservation_occasion: input.occasion,
-          reservation_scheduled_at: input.scheduledAt,
-          reservation_group_id: groupId,
-        })
-        .eq("id", tableId)
-        .eq("restaurant_id", input.restaurantId)
-        .select(TABLE_SELECT)
-        .single();
-
-      if (error) throw error;
-      updated.push(mapTable(data as TableRow));
+    if (input.partySize > totalCapacity) {
+      throw new Error("PARTY_EXCEEDS_TABLE_CAPACITY");
     }
 
-    return updated;
+    const { data, error } = await supabase
+      .from("restaurant_tables")
+      .update({
+        status: "reserved",
+        reservation_guest_name: input.guestName,
+        reservation_party_size: input.partySize,
+        reservation_occasion: input.occasion,
+        reservation_scheduled_at: input.scheduledAt,
+        reservation_group_id: groupId,
+      })
+      .eq("restaurant_id", input.restaurantId)
+      .in("id", uniqueIds)
+      .select(TABLE_SELECT);
+
+    if (error) throw error;
+
+    const byId = new Map(
+      (data ?? []).map((row) => [row.id as string, mapTable(row as TableRow)]),
+    );
+    return uniqueIds.map((id) => {
+      const table = byId.get(id);
+      if (!table) throw new Error("TABLE_NOT_FOUND");
+      return table;
+    });
   }
 
   async cancelReservationForTable(

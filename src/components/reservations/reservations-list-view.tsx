@@ -12,16 +12,12 @@ function Section({
   title,
   items,
   empty,
-  showDate = false,
-  showTime = true,
   onCancel,
   cancelingId,
 }: {
   title: string;
   items: ReservationOverviewItem[];
   empty: string;
-  showDate?: boolean;
-  showTime?: boolean;
   onCancel?: (item: ReservationOverviewItem) => void;
   cancelingId?: string | null;
 }) {
@@ -39,8 +35,6 @@ function Section({
             <ReservationCard
               key={item.id}
               item={item}
-              showDate={showDate}
-              showTime={showTime}
               onCancel={onCancel}
               cancelPending={cancelingId === item.id}
             />
@@ -78,7 +72,6 @@ export function ReservationsListView({
           title="Próximos días"
           items={upcoming}
           empty=""
-          showDate
           onCancel={onCancel}
           cancelingId={cancelingId}
         />
@@ -88,7 +81,6 @@ export function ReservationsListView({
           title="Sin horario"
           items={unscheduled}
           empty=""
-          showTime={false}
           onCancel={onCancel}
           cancelingId={cancelingId}
         />

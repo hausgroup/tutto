@@ -166,13 +166,16 @@ export const floorService = {
     const { orderService } = await import("@/lib/orders/service");
     requirePermission(context, PERMISSIONS.ORDERS_MODIFY, input.restaurantId);
     resolveRestaurantId(context, input.restaurantId);
-    for (const tableId of [...new Set(input.tableIds)]) {
-      await orderService.voidEmptyOpenOrderForTable(
-        context,
-        input.restaurantId,
-        tableId,
-      );
-    }
+    const uniqueTableIds = [...new Set(input.tableIds)];
+    await Promise.all(
+      uniqueTableIds.map((tableId) =>
+        orderService.voidEmptyOpenOrderForTable(
+          context,
+          input.restaurantId,
+          tableId,
+        ),
+      ),
+    );
     return getRepository().reserveTables(input);
   },
 

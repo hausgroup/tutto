@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState, useTransition } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { TableReservationFormFields } from "@/components/floor/table-reservation-form-fields";
@@ -26,6 +26,7 @@ import {
   patchCachedFloorBillTotal,
   patchCachedFloorPendingBarDrinks,
   patchCachedFloorTablesReservations,
+  refreshFloorBootInBackground,
 } from "@/lib/floor/client-cache";
 import { clearCachedPosBoot } from "@/lib/pos/client-cache";
 
@@ -49,12 +50,14 @@ export function TableReservationDialog({
   open,
   onOpenChange,
   onReserved,
+  onReserveFailed,
   navigateToFloorOnCreate = false,
 }: {
   tables: RestaurantTable[];
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onReserved?: (tables: RestaurantTable[]) => void;
+  onReserveFailed?: () => void;
   /** After a new reservation from POS, return to salón. */
   navigateToFloorOnCreate?: boolean;
 }) {
@@ -64,7 +67,8 @@ export function TableReservationDialog({
   const [occasion, setOccasion] = useState("");
   const [dateYmd, setDateYmd] = useState("");
   const [timeHm, setTimeHm] = useState("");
-  const [pending, startTransition] = useTransition();
+  const [pending, setPending] = useState(false);
+  const saveSeq = useRef(0);
 
   const primaryTable = tables[0] ?? null;
   const activeReservation = primaryTable?.reservation ?? null;
@@ -84,12 +88,23 @@ export function TableReservationDialog({
     [tables],
   );
 
+  const totalTableCapacity = useMemo(
+    () => tables.reduce((sum, table) => sum + table.capacity, 0),
+    [tables],
+  );
+
+  const maxPartySize = Math.max(1, totalTableCapacity);
+
+  function clampPartySize(value: number) {
+    return Math.min(Math.max(1, value), maxPartySize);
+  }
+
   useEffect(() => {
     if (!open || tables.length === 0) return;
     const seed = primaryTable?.reservation;
     if (seed) {
       setGuestName(seed.guestName);
-      setPartySize(String(seed.partySize));
+      setPartySize(String(clampPartySize(seed.partySize)));
       setOccasion(seed.occasion);
       if (seed.scheduledAt) {
         const parts = isoToLocalParts(seed.scheduledAt);
@@ -103,12 +118,12 @@ export function TableReservationDialog({
       return;
     }
     setGuestName("");
-    setPartySize("2");
+    setPartySize(String(clampPartySize(2)));
     setOccasion("");
     const defaults = defaultReservationDateTime();
     setDateYmd(defaults.dateYmd);
     setTimeHm(defaults.timeHm);
-  }, [open, tables, primaryTable]);
+  }, [open, tables, primaryTable, maxPartySize]);
 
   function submitReserve() {
     if (tables.length === 0) return;
@@ -123,8 +138,12 @@ export function TableReservationDialog({
       toast.error("Indica fecha y hora de la reserva.");
       return;
     }
-    if (!Number.isFinite(size) || size < 1 || size > 99) {
-      toast.error("Indica cuántas personas (1–99).");
+    if (!Number.isFinite(size) || size < 1 || size > maxPartySize) {
+      toast.error(
+        maxPartySize === 1
+          ? "Esta mesa solo admite 1 persona."
+          : `Indica cuántas personas (1–${maxPartySize}, capacidad de las mesas).`,
+      );
       return;
     }
     if (!trimmedOccasion) {
@@ -136,53 +155,64 @@ export function TableReservationDialog({
     const tableIds = tables.map((t) => t.id);
 
     const groupId = existingGroupId ?? crypto.randomUUID();
+    const wasUpdate = Boolean(activeReservation);
 
-    startTransition(async () => {
-      const wasUpdate = Boolean(activeReservation);
-      const result = await reserveTablesFromPosAction({
-        tableIds,
-        guestName: trimmedName,
-        partySize: size,
-        occasion: trimmedOccasion,
-        scheduledAt,
-        groupId,
+    const reservation: TableReservation = {
+      guestName: trimmedName,
+      partySize: size,
+      occasion: trimmedOccasion,
+      scheduledAt,
+      groupId,
+    };
+
+    const cacheUpdates = tableIds.map((tableId) => ({
+      tableId,
+      reservation,
+    }));
+    patchCachedFloorTablesReservations(cacheUpdates);
+    for (const tableId of tableIds) {
+      patchCachedFloorBillTotal(tableId, 0);
+      patchCachedFloorPendingBarDrinks(tableId, false);
+    }
+
+    const updated = tables.map((table) => ({
+      ...table,
+      status: "reserved" as const,
+      reservation: { ...reservation, groupId: reservation.groupId },
+    }));
+    onReserved?.(updated);
+    onOpenChange(false);
+
+    if (!wasUpdate && navigateToFloorOnCreate && primaryTable) {
+      clearCachedPosBoot(primaryTable.id);
+      router.push("/floor");
+    }
+
+    const seq = ++saveSeq.current;
+    setPending(true);
+    void reserveTablesFromPosAction({
+      tableIds,
+      guestName: trimmedName,
+      partySize: size,
+      occasion: trimmedOccasion,
+      scheduledAt,
+      groupId,
+    })
+      .then((result) => {
+        if (seq !== saveSeq.current) return;
+        if (result.error) {
+          toast.error(result.error);
+          onReserveFailed?.();
+          void refreshFloorBootInBackground();
+          return;
+        }
+        toast.success(
+          wasUpdate ? "Reserva actualizada" : "Reserva confirmada",
+        );
+      })
+      .finally(() => {
+        if (seq === saveSeq.current) setPending(false);
       });
-      if (result.error) {
-        toast.error(result.error);
-        return;
-      }
-
-      const reservation: TableReservation = {
-        guestName: trimmedName,
-        partySize: size,
-        occasion: trimmedOccasion,
-        scheduledAt,
-        groupId,
-      };
-
-      const cacheUpdates = tableIds.map((tableId) => ({
-        tableId,
-        reservation,
-      }));
-      patchCachedFloorTablesReservations(cacheUpdates);
-      for (const tableId of tableIds) {
-        patchCachedFloorBillTotal(tableId, 0);
-        patchCachedFloorPendingBarDrinks(tableId, false);
-      }
-
-      const updated = tables.map((table) => ({
-        ...table,
-        status: "reserved" as const,
-        reservation: { ...reservation, groupId: reservation.groupId },
-      }));
-      onReserved?.(updated);
-      onOpenChange(false);
-
-      if (!wasUpdate && navigateToFloorOnCreate && primaryTable) {
-        clearCachedPosBoot(primaryTable.id);
-        router.push("/floor");
-      }
-    });
   }
 
   if (tables.length === 0) return null;
@@ -229,6 +259,7 @@ export function TableReservationDialog({
             onDateYmdChange={setDateYmd}
             timeHm={timeHm}
             onTimeHmChange={setTimeHm}
+            maxPartySize={maxPartySize}
             disabled={pending}
           />
         </FormDialogBody>

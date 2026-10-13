@@ -22,6 +22,7 @@ export type Database = {
           email: string;
           full_name: string;
           phone: string | null;
+          birth_date: string | null;
           is_active: boolean;
           created_at: string;
           updated_at: string;
@@ -31,6 +32,7 @@ export type Database = {
           email: string;
           full_name?: string;
           phone?: string | null;
+          birth_date?: string | null;
           is_active?: boolean;
         };
         Update: Partial<Database["public"]["Tables"]["profiles"]["Insert"]>;
@@ -43,6 +45,8 @@ export type Database = {
           user_id: string;
           role_id: string;
           is_active: boolean;
+          work_area: string | null;
+          hired_at: string | null;
           created_at: string;
           updated_at: string;
         };
@@ -51,6 +55,8 @@ export type Database = {
           user_id: string;
           role_id: string;
           is_active?: boolean;
+          work_area?: string | null;
+          hired_at?: string | null;
         };
         Update: Partial<
           Database["public"]["Tables"]["restaurant_memberships"]["Insert"]

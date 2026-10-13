@@ -198,12 +198,14 @@ export function RecipesPanel({
             size="sm"
             onClick={() => setTab("recipes")}
           >
-            Fichas técnicas
-            {inventory.recipes.length > 0 ? (
-              <span className="ml-1.5 tabular-nums opacity-70">
-                ({inventory.recipes.length})
-              </span>
-            ) : null}
+            <span className="inline-flex items-center gap-1">
+              Fichas técnicas
+              {inventory.recipes.length > 0 ? (
+                <span className="tabular-nums opacity-70">
+                  ({inventory.recipes.length})
+                </span>
+              ) : null}
+            </span>
           </ArcButton>
           <ArcButton
             type="button"
@@ -213,12 +215,14 @@ export function RecipesPanel({
             size="sm"
             onClick={() => setTab("pending")}
           >
-            Sin receta
-            {withoutRecipe.length > 0 ? (
-              <span className="ml-1.5 tabular-nums opacity-70">
-                ({withoutRecipe.length})
-              </span>
-            ) : null}
+            <span className="inline-flex items-center gap-1">
+              Sin receta
+              {withoutRecipe.length > 0 ? (
+                <span className="tabular-nums opacity-70">
+                  ({withoutRecipe.length})
+                </span>
+              ) : null}
+            </span>
           </ArcButton>
         </div>
 

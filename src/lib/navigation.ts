@@ -4,11 +4,9 @@ import {
   Package,
   BarChart3,
   Users,
-  PencilRuler,
   Warehouse,
   ChefHat,
   CircleDollarSign,
-  MessageSquareWarning,
   CalendarDays,
   type LucideIcon,
 } from "lucide-react";
@@ -27,24 +25,17 @@ export const operationNav: AppNavItem[] = [
   { title: "Menú", href: "/products", icon: Package },
   { title: "Inventario", href: "/inventory", icon: Warehouse },
   { title: "Recetas", href: "/recipes", icon: ChefHat },
-  { title: "Reportes", href: "/reports", icon: BarChart3 },
 ];
 
 export const adminNav: AppNavItem[] = [
-  { title: "Plano de mesas", href: "/floor/editor", icon: PencilRuler },
+  { title: "Reportes", href: "/reports", icon: BarChart3 },
   { title: "Personal", href: "/staff", icon: Users },
   { title: "Configuración", href: "/settings", icon: Settings2 },
-];
-
-/** Temporary nav for beta testers — remove when no longer needed. */
-export const testingNav: AppNavItem[] = [
-  { title: "Feedback", href: "/feedback", icon: MessageSquareWarning },
 ];
 
 const allNav = [
   ...operationNav,
   ...adminNav,
-  ...testingNav,
   { title: "POS", href: "/pos", icon: UtensilsCrossed },
 ];
 

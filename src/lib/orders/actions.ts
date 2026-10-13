@@ -1,5 +1,6 @@
 "use server";
 
+import { after } from "next/server";
 import { revalidatePath } from "next/cache";
 import { resolveAuthContext, getDefaultRestaurantId } from "@/lib/auth/resolve-context";
 import {
@@ -44,6 +45,11 @@ function mapError(error: unknown): PosActionState {
         return { error: "No hay una reserva activa en esta mesa." };
       case "TABLE_NOT_AVAILABLE":
         return { error: "Esta mesa no está disponible para reservar." };
+      case "PARTY_EXCEEDS_TABLE_CAPACITY":
+        return {
+          error:
+            "El número de personas supera la capacidad de las mesas seleccionadas.",
+        };
       case "TABLE_NOT_FOUND":
         return { error: "Mesa no encontrada." };
       case "ORDER_ITEM_NOT_FOUND":
@@ -227,8 +233,10 @@ export async function cancelTableReservationAction(input: {
       parsed.restaurantId,
       parsed.tableId,
     );
-    revalidateFloorSurfaces();
-    revalidatePath("/reservations");
+    after(() => {
+      revalidateFloorSurfaces();
+      revalidatePath("/reservations");
+    });
     return { ok: true };
   } catch (error) {
     return mapError(error);
@@ -257,7 +265,10 @@ export async function reserveTablesFromPosAction(input: {
       groupId: input.groupId,
     });
     await floorService.reserveTables(context, parsed);
-    revalidateFloorSurfaces();
+    after(() => {
+      revalidateFloorSurfaces();
+      revalidatePath("/reservations");
+    });
     return { ok: true };
   } catch (error) {
     return mapError(error);

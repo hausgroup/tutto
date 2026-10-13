@@ -8,6 +8,7 @@ import {
   type AuthContext,
 } from "@/lib/auth/permissions";
 import * as staffDb from "@/lib/staff/supabase-repository";
+import type { StaffWorkAreaId } from "@/lib/staff/work-areas";
 import type {
   StaffMember,
   StaffRoleSlug,
@@ -52,6 +53,7 @@ export const staffService = {
       email: string;
       fullName: string;
       roleSlug: StaffRoleSlug;
+      workArea?: StaffWorkAreaId | null;
     },
   ) {
     assertCanManage(context, input.restaurantId);
@@ -94,6 +96,10 @@ export const staffService = {
         roleId: role.id,
         isActive: true,
         createdAt: new Date().toISOString(),
+        phone: null,
+        birthDate: null,
+        workArea: input.workArea ?? "salon",
+        hiredAt: new Date().toISOString().slice(0, 10),
       };
       store.staffMembers.push(member);
       return { kind: "member" as const, email };
@@ -209,6 +215,85 @@ export const staffService = {
     }
 
     await staffDb.setMembershipActive(input);
+  },
+
+  async updateHr(
+    context: AuthContext,
+    input: {
+      restaurantId: string;
+      membershipId: string;
+      fullName: string;
+      email: string;
+      workArea: StaffWorkAreaId | null;
+      hiredAt: string | null;
+      birthDate: string | null;
+      phone: string | null;
+    },
+  ) {
+    assertCanManage(context, input.restaurantId);
+
+    if (canUseDemoExperience()) {
+      const store = getDemoRestaurantStore(input.restaurantId);
+      const member = store.staffMembers.find(
+        (m) =>
+          m.membershipId === input.membershipId &&
+          m.restaurantId === input.restaurantId,
+      );
+      if (!member) throw new Error("MEMBER_NOT_FOUND");
+      member.fullName = input.fullName.trim();
+      member.email = input.email.trim().toLowerCase();
+      member.workArea = input.workArea;
+      member.hiredAt = input.hiredAt;
+      member.birthDate = input.birthDate;
+      member.phone = input.phone;
+      return;
+    }
+
+    const snapshot = await staffDb.fetchStaffSnapshot(input.restaurantId);
+    const member = snapshot.members.find(
+      (m) => m.membershipId === input.membershipId,
+    );
+    if (!member) throw new Error("MEMBER_NOT_FOUND");
+
+    await staffDb.updateMemberHr({
+      restaurantId: input.restaurantId,
+      membershipId: input.membershipId,
+      userId: member.userId,
+      previousEmail: member.email,
+      fullName: input.fullName,
+      email: input.email,
+      workArea: input.workArea,
+      hiredAt: input.hiredAt,
+      birthDate: input.birthDate,
+      phone: input.phone,
+    });
+  },
+
+  async updateInvitation(
+    context: AuthContext,
+    input: {
+      restaurantId: string;
+      invitationId: string;
+      fullName: string;
+      email: string;
+    },
+  ) {
+    assertCanManage(context, input.restaurantId);
+
+    if (canUseDemoExperience()) {
+      const store = getDemoRestaurantStore(input.restaurantId);
+      const invite = store.staffInvitations.find(
+        (i) =>
+          i.id === input.invitationId &&
+          i.restaurantId === input.restaurantId,
+      );
+      if (!invite) throw new Error("INVITE_NOT_FOUND");
+      invite.fullName = input.fullName.trim();
+      invite.email = input.email.trim().toLowerCase();
+      return;
+    }
+
+    await staffDb.updateStaffInvitation(input);
   },
 
   async cancelInvitation(

@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import { ThemeProvider } from "@/components/theme-provider";
+import { THEME_BLOCKING_SCRIPT } from "@/lib/theme/blocking-script";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { Toaster } from "@/components/ui/sonner";
 import "@/components/arc/foundation.css";
@@ -33,6 +34,12 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
       data-accent="neutral"
       className={`${geistSans.variable} ${geistMono.variable} h-full`}
     >
+      <head>
+        <script
+          suppressHydrationWarning
+          dangerouslySetInnerHTML={{ __html: THEME_BLOCKING_SCRIPT }}
+        />
+      </head>
       <body className="min-h-full bg-background font-sans text-foreground antialiased">
         <ThemeProvider>
           <TooltipProvider>{children}</TooltipProvider>

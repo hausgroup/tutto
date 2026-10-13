@@ -145,7 +145,7 @@ export function ReservationsPanel({
             ) : (
               <FileDown className="size-4" aria-hidden />
             )}
-            PDF mañana
+            Compartir reservas
             {tomorrowItems.length > 0 ? (
               <span className="tabular-nums text-muted-foreground">
                 {tomorrowItems.length}

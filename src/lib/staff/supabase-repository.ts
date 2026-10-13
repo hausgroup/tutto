@@ -1,5 +1,7 @@
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
+import { isUndefinedColumnError } from "@/lib/supabase/postgres-errors";
+import { normalizeWorkArea } from "@/lib/staff/work-areas";
 import type {
   StaffInvitation,
   StaffMember,
@@ -7,6 +9,7 @@ import type {
   StaffRoleSlug,
   StaffSnapshot,
 } from "@/lib/staff/types";
+import type { StaffWorkAreaId } from "@/lib/staff/work-areas";
 
 type RoleRow = {
   id: string;
@@ -21,9 +24,13 @@ type MembershipListRow = {
   role_id: string;
   is_active: boolean;
   created_at: string;
+  work_area?: string | null;
+  hired_at?: string | null;
   profiles: {
     email: string;
     full_name: string;
+    phone: string | null;
+    birth_date?: string | null;
   } | null;
   roles: {
     id: string;
@@ -31,6 +38,72 @@ type MembershipListRow = {
     name: string;
   } | null;
 };
+
+const MEMBERSHIP_SELECT_WITH_HR = `
+  id,
+  restaurant_id,
+  user_id,
+  role_id,
+  is_active,
+  created_at,
+  work_area,
+  hired_at,
+  profiles ( email, full_name, phone, birth_date ),
+  roles ( id, slug, name )
+`;
+
+const MEMBERSHIP_SELECT_LEGACY = `
+  id,
+  restaurant_id,
+  user_id,
+  role_id,
+  is_active,
+  created_at,
+  profiles ( email, full_name, phone ),
+  roles ( id, slug, name )
+`;
+
+function mapMembershipRow(row: MembershipListRow): StaffMember {
+  return {
+    membershipId: row.id,
+    userId: row.user_id,
+    restaurantId: row.restaurant_id,
+    email: row.profiles?.email ?? "",
+    fullName: row.profiles?.full_name ?? "",
+    phone: row.profiles?.phone ?? null,
+    birthDate: row.profiles?.birth_date ?? null,
+    workArea: normalizeWorkArea(row.work_area ?? null),
+    hiredAt: row.hired_at ?? null,
+    roleSlug: asRoleSlug(row.roles?.slug ?? "staff"),
+    roleName: row.roles?.name ?? "Personal",
+    roleId: row.role_id,
+    isActive: row.is_active,
+    createdAt: row.created_at,
+  };
+}
+
+async function listMemberships(restaurantId: string) {
+  const supabase = await createSupabaseServerClient();
+  const withHr = await supabase
+    .from("restaurant_memberships")
+    .select(MEMBERSHIP_SELECT_WITH_HR)
+    .eq("restaurant_id", restaurantId)
+    .order("created_at");
+
+  if (!withHr.error) {
+    return (withHr.data ?? []) as unknown as MembershipListRow[];
+  }
+  if (!isUndefinedColumnError(withHr.error)) throw withHr.error;
+
+  const legacy = await supabase
+    .from("restaurant_memberships")
+    .select(MEMBERSHIP_SELECT_LEGACY)
+    .eq("restaurant_id", restaurantId)
+    .order("created_at");
+
+  if (legacy.error) throw legacy.error;
+  return (legacy.data ?? []) as unknown as MembershipListRow[];
+}
 
 type InvitationRow = {
   id: string;
@@ -71,28 +144,12 @@ export async function fetchStaffSnapshot(
   const supabase = await createSupabaseServerClient();
   const roles = await listRoles();
 
-  const [{ data: members, error: membersError }, { data: invites, error: invitesError }] =
-    await Promise.all([
-      supabase
-        .from("restaurant_memberships")
-        .select(
-          `
-          id,
-          restaurant_id,
-          user_id,
-          role_id,
-          is_active,
-          created_at,
-          profiles ( email, full_name ),
-          roles ( id, slug, name )
-        `,
-        )
-        .eq("restaurant_id", restaurantId)
-        .order("created_at"),
-      supabase
-        .from("staff_invitations")
-        .select(
-          `
+  const [memberRows, { data: invites, error: invitesError }] = await Promise.all([
+    listMemberships(restaurantId),
+    supabase
+      .from("staff_invitations")
+      .select(
+        `
           id,
           restaurant_id,
           email,
@@ -102,29 +159,17 @@ export async function fetchStaffSnapshot(
           created_at,
           roles ( id, slug, name )
         `,
-        )
-        .eq("restaurant_id", restaurantId)
-        .eq("status", "pending")
-        .order("created_at", { ascending: false }),
-    ]);
+      )
+      .eq("restaurant_id", restaurantId)
+      .eq("status", "pending")
+      .order("created_at", { ascending: false }),
+  ]);
 
-  if (membersError) throw membersError;
   if (invitesError) throw invitesError;
 
   return {
     roles,
-    members: ((members ?? []) as unknown as MembershipListRow[]).map((row) => ({
-      membershipId: row.id,
-      userId: row.user_id,
-      restaurantId: row.restaurant_id,
-      email: row.profiles?.email ?? "",
-      fullName: row.profiles?.full_name ?? "",
-      roleSlug: asRoleSlug(row.roles?.slug ?? "staff"),
-      roleName: row.roles?.name ?? "Personal",
-      roleId: row.role_id,
-      isActive: row.is_active,
-      createdAt: row.created_at,
-    })),
+    members: memberRows.map(mapMembershipRow),
     invitations: ((invites ?? []) as unknown as InvitationRow[]).map((row) => ({
       id: row.id,
       restaurantId: row.restaurant_id,
@@ -272,6 +317,114 @@ export async function setMembershipActive(input: {
     .eq("id", input.membershipId)
     .eq("restaurant_id", input.restaurantId);
   if (error) throw error;
+}
+
+export async function updateMemberHr(input: {
+  restaurantId: string;
+  membershipId: string;
+  userId: string;
+  previousEmail: string;
+  fullName: string;
+  email: string;
+  workArea: StaffWorkAreaId | null;
+  hiredAt: string | null;
+  birthDate: string | null;
+  phone: string | null;
+}) {
+  const email = input.email.trim().toLowerCase();
+  const fullName = input.fullName.trim();
+  const previousEmail = input.previousEmail.trim().toLowerCase();
+  const supabase = await createSupabaseServerClient();
+  const admin = createSupabaseAdminClient();
+  const db = admin ?? supabase;
+
+  const { error: membershipError } = await db
+    .from("restaurant_memberships")
+    .update({
+      work_area: input.workArea,
+      hired_at: input.hiredAt,
+    })
+    .eq("id", input.membershipId)
+    .eq("restaurant_id", input.restaurantId);
+  if (membershipError && !isUndefinedColumnError(membershipError)) {
+    throw membershipError;
+  }
+
+  const profilePayload = {
+    full_name: fullName,
+    email,
+    phone: input.phone,
+    birth_date: input.birthDate,
+  };
+
+  const { error: profileError } = await db
+    .from("profiles")
+    .update(profilePayload)
+    .eq("id", input.userId);
+  if (profileError) {
+    if (isUndefinedColumnError(profileError)) {
+      const { error: legacyProfileError } = await db
+        .from("profiles")
+        .update({
+          full_name: fullName,
+          email,
+          phone: input.phone,
+        })
+        .eq("id", input.userId);
+      if (legacyProfileError) {
+        if (legacyProfileError.code === "23505") {
+          throw new Error("EMAIL_IN_USE");
+        }
+        throw legacyProfileError;
+      }
+      if (input.birthDate != null) {
+        throw new Error("STAFF_HR_MIGRATION_REQUIRED");
+      }
+    }
+    if (profileError.code === "23505") throw new Error("EMAIL_IN_USE");
+    throw profileError;
+  }
+
+  if (admin) {
+    const authUpdate: {
+      email?: string;
+      user_metadata: { full_name: string };
+    } = { user_metadata: { full_name: fullName } };
+    if (email !== previousEmail) authUpdate.email = email;
+
+    const { error: authError } = await admin.auth.admin.updateUserById(
+      input.userId,
+      authUpdate,
+    );
+    if (authError) {
+      if (authError.message?.toLowerCase().includes("already")) {
+        throw new Error("EMAIL_IN_USE");
+      }
+      throw authError;
+    }
+  }
+}
+
+export async function updateStaffInvitation(input: {
+  restaurantId: string;
+  invitationId: string;
+  fullName: string;
+  email: string;
+}) {
+  const supabase = await createSupabaseServerClient();
+  const email = input.email.trim().toLowerCase();
+  const { error } = await supabase
+    .from("staff_invitations")
+    .update({
+      email,
+      full_name: input.fullName.trim(),
+    })
+    .eq("id", input.invitationId)
+    .eq("restaurant_id", input.restaurantId);
+  if (error) {
+    if (error.code === "23505") throw new Error("INVITE_EXISTS");
+    throw error;
+  }
 }
 
 export async function cancelInvitation(input: {

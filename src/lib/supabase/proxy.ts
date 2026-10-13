@@ -16,7 +16,6 @@ const demoAppRoutes = [
   "/cashier",
   "/reports",
   "/staff",
-  "/feedback",
 ];
 
 function isDemoAppRoute(pathname: string) {
