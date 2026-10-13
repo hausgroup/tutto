@@ -39,7 +39,7 @@ export async function signInAction(
   }
 
   const next = formData.get("next");
-  redirect(typeof next === "string" && next.startsWith("/") ? next : "/dashboard");
+  redirect(typeof next === "string" && next.startsWith("/") ? next : "/floor");
 }
 
 export async function signOutAction() {

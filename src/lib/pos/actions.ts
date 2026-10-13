@@ -4,6 +4,7 @@ import {
   getDefaultRestaurantId,
   resolveAuthContext,
 } from "@/lib/auth/resolve-context";
+import type { AuthContext } from "@/lib/auth/permissions";
 import { catalogService } from "@/lib/catalog/service";
 import { orderService } from "@/lib/orders/service";
 import type { CatalogSnapshot } from "@/lib/catalog/types";
@@ -19,6 +20,8 @@ export type PosBootstrap = {
   restaurantId: string;
   tableReservation: TableReservation | null;
 };
+
+export type PosTableBootstrap = Omit<PosBootstrap, "catalog">;
 
 export type PosCatalogWarm = {
   catalog: CatalogSnapshot;
@@ -60,6 +63,40 @@ export async function warmPosCatalogAction(): Promise<
   }
 }
 
+async function loadPosTableBootstrap(
+  context: AuthContext,
+  restaurantId: string,
+  tableId: string,
+): Promise<PosTableBootstrap> {
+  const [order, table] = await Promise.all([
+    orderService.getOrCreateTableOrder(context, restaurantId, tableId),
+    floorService.getTableById(context, restaurantId, tableId),
+  ]);
+
+  return {
+    order,
+    tableLabel: order.tableLabel ?? table?.label ?? tableId,
+    attendantName: context.fullName || context.email,
+    restaurantId,
+    tableReservation:
+      table?.status === "reserved" ? table.reservation : null,
+  };
+}
+
+export async function bootstrapPosTableAction(
+  tableId: string,
+): Promise<PosTableBootstrap | { error: string }> {
+  try {
+    const context = await resolveAuthContext();
+    const restaurantId = getDefaultRestaurantId(context);
+    if (!restaurantId) return { error: "RESTAURANT_NOT_FOUND" };
+    return await loadPosTableBootstrap(context, restaurantId, tableId);
+  } catch (error) {
+    console.error("[bootstrapPosTableAction]", error);
+    return { error: mapBootstrapError(error) };
+  }
+}
+
 export async function bootstrapPosAction(
   tableId: string,
 ): Promise<PosBootstrap | { error: string }> {
@@ -68,26 +105,12 @@ export async function bootstrapPosAction(
     const restaurantId = getDefaultRestaurantId(context);
     if (!restaurantId) return { error: "RESTAURANT_NOT_FOUND" };
 
-    const [catalog, order] = await Promise.all([
+    const [catalog, tableBoot] = await Promise.all([
       catalogService.getSnapshot(context, restaurantId),
-      orderService.getOrCreateTableOrder(context, restaurantId, tableId),
+      loadPosTableBootstrap(context, restaurantId, tableId),
     ]);
 
-    const table = await floorService.getTableById(
-      context,
-      restaurantId,
-      tableId,
-    );
-
-    return {
-      catalog,
-      order,
-      tableLabel: order.tableLabel ?? table?.label ?? tableId,
-      attendantName: context.fullName || context.email,
-      restaurantId,
-      tableReservation:
-        table?.status === "reserved" ? table.reservation : null,
-    };
+    return { ...tableBoot, catalog };
   } catch (error) {
     console.error("[bootstrapPosAction]", error);
     return { error: mapBootstrapError(error) };

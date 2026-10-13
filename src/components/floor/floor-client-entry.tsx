@@ -1,10 +1,10 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { CalendarCheck, PencilRuler } from "lucide-react";
 import { toast } from "sonner";
-import { Button } from "@/components/arc/button/button";
-import { ArcLinkButton } from "@/components/arc/arc-link-button";
+import { Button } from "@/components/ui/button";
 import { FloorPlanView } from "@/components/floor/floor-plan-view";
 import { PageHeaderActions } from "@/components/layout/page-header-actions";
 import type { FloorBootstrap } from "@/lib/floor/actions-boot";
@@ -12,6 +12,7 @@ import {
   getCachedFloorBoot,
   getPendingFloorBoot,
   setCachedFloorBoot,
+  refreshFloorBootInBackground,
   warmFloorBoot,
 } from "@/lib/floor/client-cache";
 function FloorChrome({ boot }: { boot: FloorBootstrap }) {
@@ -23,7 +24,7 @@ function FloorChrome({ boot }: { boot: FloorBootstrap }) {
         <div className="flex flex-wrap items-center justify-end gap-2">
           <Button
             type="button"
-            variant={reservePickActive ? "primary" : "secondary"}
+            variant="outline"
             size="sm"
             onClick={() => setReservePickActive((current) => !current)}
           >
@@ -31,10 +32,12 @@ function FloorChrome({ boot }: { boot: FloorBootstrap }) {
             {reservePickActive ? "Cancelar" : "Reservar"}
           </Button>
           {boot.canManage ? (
-            <ArcLinkButton href="/floor/editor" variant="secondary" size="sm">
-              <PencilRuler className="size-4" />
-              Editar plano
-            </ArcLinkButton>
+            <Button asChild variant="outline" size="sm">
+              <Link href="/floor/editor">
+                <PencilRuler className="size-4" />
+                Editar plano
+              </Link>
+            </Button>
           ) : null}
         </div>
       </PageHeaderActions>
@@ -58,7 +61,21 @@ export function FloorClientEntry() {
   useEffect(() => {
     let cancelled = false;
 
-    const pending = getPendingFloorBoot() ?? warmFloorBoot({ force: true });
+    const cached = getCachedFloorBoot();
+    if (cached) {
+      setBoot(cached);
+      refreshFloorBootInBackground((fresh) => {
+        if (!cancelled) {
+          setCachedFloorBoot(fresh);
+          setBoot(fresh);
+        }
+      });
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    const pending = getPendingFloorBoot() ?? warmFloorBoot();
     void pending
       .then((result) => {
         if (cancelled) return;

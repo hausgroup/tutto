@@ -6,7 +6,9 @@ import { ReportsHeaderActions } from "@/components/reports/reports-header-action
 export function ReportsPageHeader() {
   return (
     <PageHeaderActions>
-      <ReportsHeaderActions />
+      <div className="flex flex-wrap items-center justify-end gap-2">
+        <ReportsHeaderActions />
+      </div>
     </PageHeaderActions>
   );
 }

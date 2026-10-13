@@ -65,6 +65,8 @@ export const SALON_STATE_META: Record<
     icon: LucideIcon;
     /** Tailwind classes for chair indicators. */
     accentClass: string;
+    /** Tailwind text color for icons (matches accent on salon tables). */
+    iconClass: string;
     badgeClass: string;
   }
 > = {
@@ -74,6 +76,7 @@ export const SALON_STATE_META: Record<
     tableStatus: "available",
     icon: CircleDot,
     accentClass: "bg-emerald-500 dark:bg-emerald-600",
+    iconClass: "text-emerald-500 dark:text-emerald-400",
     badgeClass:
       "border-emerald-500/50 text-emerald-800 dark:border-emerald-500/40 dark:text-emerald-400",
   },
@@ -83,6 +86,7 @@ export const SALON_STATE_META: Record<
     tableStatus: "reserved",
     icon: CircleCheck,
     accentClass: "bg-amber-500 dark:bg-amber-600",
+    iconClass: "text-amber-500 dark:text-amber-400",
     badgeClass:
       "border-amber-500/50 text-amber-900 dark:border-amber-500/40 dark:text-amber-400",
   },
@@ -92,6 +96,7 @@ export const SALON_STATE_META: Record<
     tableStatus: "occupied",
     icon: Utensils,
     accentClass: "bg-rose-500 dark:bg-rose-600",
+    iconClass: "text-rose-500 dark:text-rose-400",
     badgeClass:
       "border-rose-500/50 text-rose-800 dark:border-rose-500/40 dark:text-rose-400",
   },

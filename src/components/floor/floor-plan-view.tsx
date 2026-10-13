@@ -137,10 +137,7 @@ export function FloorPlanView({
       persistStaffNameForTable(table.id, staffName);
     }
     void warmPosTable(table.id).catch(() => {});
-    const href = posHref(table, staffName);
-    startTransition(() => {
-      router.push(href);
-    });
+    router.push(posHref(table, staffName));
   }
 
   function beginOpenPos(table: RestaurantTable) {

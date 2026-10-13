@@ -1,7 +1,5 @@
 import type { Metadata } from "next";
-import { Suspense } from "react";
 import { PosClientEntry } from "@/components/pos/pos-client-entry";
-import { PosLoadingShell } from "@/components/pos/pos-loading-shell";
 
 export const metadata: Metadata = { title: "POS" };
 
@@ -13,11 +11,15 @@ export default async function PosTablePage({
   const query = await searchParams;
   const tableLabel =
     typeof query.t === "string" && query.t.trim() ? query.t.trim() : tableId;
+  const staffFromUrl =
+    typeof query.staff === "string" ? query.staff.trim() : "";
 
   // No server data fetch — client paints from warm cache / in-flight bootstrap.
   return (
-    <Suspense fallback={<PosLoadingShell tableLabel={tableLabel} />}>
-      <PosClientEntry tableId={tableId} tableLabel={tableLabel} />
-    </Suspense>
+    <PosClientEntry
+      tableId={tableId}
+      tableLabel={tableLabel}
+      staffFromUrl={staffFromUrl}
+    />
   );
 }

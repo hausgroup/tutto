@@ -2,7 +2,7 @@ import type { CatalogSnapshot } from "@/lib/catalog/types";
 import { getCachedFloorBoot } from "@/lib/floor/client-cache";
 import type { Order } from "@/lib/orders/types";
 import {
-  bootstrapPosAction,
+  bootstrapPosTableAction,
   warmPosCatalogAction,
   type PosBootstrap,
   type PosCatalogWarm,
@@ -87,18 +87,24 @@ export function warmPosTable(tableId: string): Promise<PosBootstrap> {
   const pending = pendingBoots.get(tableId);
   if (pending) return pending;
 
-  const request = bootstrapPosAction(tableId)
-    .then((result) => {
-      if ("error" in result) {
-        throw new Error(result.error);
+  const request = Promise.all([
+    catalogWarm ? Promise.resolve(catalogWarm) : warmPosCatalog(),
+    bootstrapPosTableAction(tableId),
+  ])
+    .then(([catalogResult, tableResult]) => {
+      if (!catalogResult) {
+        throw new Error("BOOTSTRAP_FAILED");
       }
-      catalogWarm = {
-        catalog: result.catalog,
-        attendantName: result.attendantName,
-        restaurantId: result.restaurantId,
+      if ("error" in tableResult) {
+        throw new Error(tableResult.error);
+      }
+      catalogWarm = catalogResult;
+      const boot: PosBootstrap = {
+        ...tableResult,
+        catalog: catalogResult.catalog,
       };
-      boots.set(tableId, result);
-      return result;
+      boots.set(tableId, boot);
+      return boot;
     })
     .catch((error) => {
       pendingBoots.delete(tableId);

@@ -24,6 +24,7 @@ export default async function RecipesPage() {
       restaurantId={restaurantId}
       inventory={inventory}
       products={catalog.products}
+      categories={catalog.categories}
       canManage={canManage}
     />
   );

@@ -2,7 +2,9 @@
 
 import { CalendarCheck } from "lucide-react";
 import { formatReservationWhen } from "@/lib/floor/reservation-time";
+import { SALON_STATE_META } from "@/lib/floor/status";
 import type { TableReservation } from "@/lib/floor/types";
+import { cn } from "@/lib/utils";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -28,7 +30,10 @@ export function PosTableReservationIndicator({
       <DropdownMenuTrigger asChild>
         <button
           type="button"
-          className="inline-flex shrink-0 items-center justify-center text-[#8A8050] transition-opacity hover:opacity-80 dark:text-[#E4DDB0]"
+          className={cn(
+            "inline-flex shrink-0 items-center justify-center transition-opacity hover:opacity-80",
+            SALON_STATE_META.reserved.iconClass,
+          )}
           aria-label={`Reserva: ${reservation.guestName}`}
         >
           <CalendarCheck className="size-5" strokeWidth={1.75} aria-hidden />

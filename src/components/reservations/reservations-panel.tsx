@@ -1,42 +1,53 @@
 "use client";
 
 import { useEffect, useMemo, useState, useTransition } from "react";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { CalendarDays, CalendarRange, List, Clock } from "lucide-react";
+import { FileDown, Loader2 } from "lucide-react";
+import { Button as ArcButton } from "@/components/arc/button/button";
+import { Button } from "@/components/ui/button";
 import { ReservationsCalendarView } from "@/components/reservations/reservations-calendar-view";
 import { ReservationsListView } from "@/components/reservations/reservations-list-view";
-import { ReservationsTimelineView } from "@/components/reservations/reservations-timeline-view";
+import { PageHeaderActions } from "@/components/layout/page-header-actions";
+import { PageStat, PageStatGrid } from "@/components/ui/page-stat";
 import {
   buildReservationOverview,
-  distinctScheduledDays,
   partitionReservationsByDay,
+  reservationsForDay,
+  tomorrowYmdInRestaurantZone,
   type ReservationOverviewItem,
-  ymdInRestaurantZone,
 } from "@/lib/floor/reservations-overview";
+import { buildHostReservationsDayPdf } from "@/lib/floor/reservations-host-pdf";
+import {
+  downloadPdfBytes,
+  slugForFilename,
+} from "@/lib/floor/download-pdf";
 import type { FloorSnapshot } from "@/lib/floor/types";
 import { patchCachedFloorCancelReservation } from "@/lib/floor/client-cache";
 import { cancelTableReservationAction } from "@/lib/orders/actions";
-import { cn } from "@/lib/utils";
 
-export type ReservationsViewMode = "list" | "timeline" | "calendar";
+export type ReservationsViewMode = "list" | "calendar";
 
 const VIEW_STORAGE_KEY = "haus-reservations-view";
 
 const VIEW_OPTIONS: {
   id: ReservationsViewMode;
   label: string;
-  icon: typeof List;
 }[] = [
-  { id: "list", label: "Lista", icon: List },
-  { id: "timeline", label: "Timeline", icon: Clock },
-  { id: "calendar", label: "Agenda", icon: CalendarRange },
+  { id: "list", label: "Todas" },
+  { id: "calendar", label: "Calendario" },
 ];
 
-export function ReservationsPanel({ snapshot }: { snapshot: FloorSnapshot }) {
+export function ReservationsPanel({
+  snapshot,
+  restaurantName,
+}: {
+  snapshot: FloorSnapshot;
+  restaurantName: string;
+}) {
   const router = useRouter();
   const [cancelingId, setCancelingId] = useState<string | null>(null);
+  const [exportingPdf, setExportingPdf] = useState(false);
   const [, startCancel] = useTransition();
 
   const all = useMemo(() => buildReservationOverview(snapshot), [snapshot]);
@@ -46,25 +57,25 @@ export function ReservationsPanel({ snapshot }: { snapshot: FloorSnapshot }) {
   );
   const guestsTonight = today.reduce((sum, item) => sum + item.partySize, 0);
 
-  const todayYmd = ymdInRestaurantZone(new Date());
-  const dayOptions = useMemo(() => {
-    const set = new Set(distinctScheduledDays(all));
-    set.add(todayYmd);
-    return [...set].sort();
-  }, [all, todayYmd]);
+  const tomorrowYmd = tomorrowYmdInRestaurantZone();
+  const tomorrowItems = useMemo(
+    () => reservationsForDay(all, tomorrowYmd),
+    [all, tomorrowYmd],
+  );
+  const tomorrowGuests = tomorrowItems.reduce(
+    (sum, item) => sum + item.partySize,
+    0,
+  );
 
   const [view, setView] = useState<ReservationsViewMode>("list");
-  const [focusYmd, setFocusYmd] = useState(todayYmd);
 
   useEffect(() => {
     try {
       const stored = localStorage.getItem(VIEW_STORAGE_KEY);
-      if (
-        stored === "list" ||
-        stored === "timeline" ||
-        stored === "calendar"
-      ) {
+      if (stored === "list" || stored === "calendar") {
         setView(stored);
+      } else if (stored === "day" || stored === "timeline") {
+        setView("list");
       }
     } catch {
       /* ignore */
@@ -96,113 +107,118 @@ export function ReservationsPanel({ snapshot }: { snapshot: FloorSnapshot }) {
     }
   }
 
+  async function exportTomorrowHostPdf() {
+    setExportingPdf(true);
+    try {
+      const bytes = await buildHostReservationsDayPdf({
+        restaurantName,
+        ymd: tomorrowYmd,
+        items: tomorrowItems,
+      });
+      const slug = slugForFilename(restaurantName) || "local";
+      downloadPdfBytes(bytes, `reservas-${tomorrowYmd}-${slug}.pdf`);
+      toast.success(
+        tomorrowItems.length > 0
+          ? "PDF de mañana descargado."
+          : "PDF descargado (sin reservas para mañana).",
+      );
+    } catch {
+      toast.error("No pudimos generar el PDF.");
+    } finally {
+      setExportingPdf(false);
+    }
+  }
+
   return (
-    <div className="mx-auto flex w-full max-w-3xl flex-col gap-8">
-      <div className="grid gap-3 sm:grid-cols-3">
-        <div className="rounded-2xl border border-border/80 bg-card/60 px-4 py-3">
-          <p className="text-xs font-medium text-muted-foreground">Hoy</p>
-          <p className="mt-1 text-2xl font-semibold tabular-nums">
-            {today.length}
-          </p>
-          <p className="text-xs text-muted-foreground">reservas</p>
+    <div className="flex w-full flex-col gap-6">
+      <PageHeaderActions>
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            disabled={exportingPdf}
+            onClick={() => void exportTomorrowHostPdf()}
+          >
+            {exportingPdf ? (
+              <Loader2 className="size-4 animate-spin" aria-hidden />
+            ) : (
+              <FileDown className="size-4" aria-hidden />
+            )}
+            PDF mañana
+            {tomorrowItems.length > 0 ? (
+              <span className="tabular-nums text-muted-foreground">
+                {tomorrowItems.length}
+              </span>
+            ) : null}
+          </Button>
         </div>
-        <div className="rounded-2xl border border-border/80 bg-card/60 px-4 py-3">
-          <p className="text-xs font-medium text-muted-foreground">Próximas</p>
-          <p className="mt-1 text-2xl font-semibold tabular-nums">
-            {upcoming.length}
-          </p>
-          <p className="text-xs text-muted-foreground">días siguientes</p>
-        </div>
-        <div className="rounded-2xl border border-border/80 bg-card/60 px-4 py-3">
-          <p className="text-xs font-medium text-muted-foreground">
-            Comensales hoy
-          </p>
-          <p className="mt-1 text-2xl font-semibold tabular-nums">
-            {guestsTonight}
-          </p>
-          <p className="text-xs text-muted-foreground">personas esperadas</p>
-        </div>
-      </div>
+      </PageHeaderActions>
 
-      <div
-        className={cn(
-          "flex flex-col gap-3 rounded-2xl border border-border/60 bg-muted/30 px-4 py-3 sm:flex-row sm:items-center sm:justify-between",
-        )}
-      >
-        <span className="inline-flex items-center gap-2 text-sm text-muted-foreground">
-          <CalendarDays className="size-4 shrink-0" aria-hidden />
-          {new Intl.DateTimeFormat("es-CO", {
-            timeZone: "America/Bogota",
-            weekday: "long",
-            day: "numeric",
-            month: "long",
-          }).format(new Date())}
-        </span>
-        <Link
-          href="/floor"
-          className="text-sm font-medium text-foreground underline-offset-4 hover:underline"
+      <PageStatGrid columns={4}>
+        <PageStat label="Hoy" value={today.length} hint={guestHint(guestsTonight)} />
+        <PageStat
+          label="Mañana"
+          value={tomorrowItems.length}
+          hint={guestHint(tomorrowGuests)}
+        />
+        <PageStat
+          label="Próximos días"
+          value={upcoming.length}
+          hint="Después de mañana"
+        />
+        <PageStat
+          label="Sin horario"
+          value={unscheduled.length}
+          hint="Falta la hora"
+        />
+      </PageStatGrid>
+
+      <div className="flex flex-col gap-5">
+        <div
+          className="flex flex-wrap gap-2"
+          role="tablist"
+          aria-label="Vista de reservas"
         >
-          Ir al salón
-        </Link>
-      </div>
-
-      <div
-        className="flex flex-wrap gap-1 rounded-full border border-border/70 bg-card/50 p-1"
-        role="tablist"
-        aria-label="Vista de reservas"
-      >
-        {VIEW_OPTIONS.map((option) => {
-          const Icon = option.icon;
-          const active = view === option.id;
-          return (
-            <button
+          {VIEW_OPTIONS.map((option) => (
+            <ArcButton
               key={option.id}
               type="button"
               role="tab"
-              aria-selected={active}
+              aria-selected={view === option.id}
+              variant={view === option.id ? "primary" : "secondary"}
+              size="sm"
               onClick={() => selectView(option.id)}
-              className={cn(
-                "inline-flex flex-1 items-center justify-center gap-2 rounded-full px-3 py-2 text-sm font-medium transition-colors sm:flex-none sm:min-w-[7rem]",
-                active
-                  ? "bg-foreground text-background shadow-sm"
-                  : "text-muted-foreground hover:bg-muted/60 hover:text-foreground",
-              )}
             >
-              <Icon className="size-4 shrink-0" aria-hidden />
               {option.label}
-            </button>
-          );
-        })}
-      </div>
+            </ArcButton>
+          ))}
+        </div>
 
-      <div role="tabpanel">
-        {view === "list" ? (
-          <ReservationsListView
-            today={today}
-            upcoming={upcoming}
-            unscheduled={unscheduled}
-            onCancel={handleCancelReservation}
-            cancelingId={cancelingId}
-          />
-        ) : null}
-        {view === "timeline" ? (
-          <ReservationsTimelineView
-            allItems={all}
-            focusYmd={focusYmd}
-            onFocusYmdChange={setFocusYmd}
-            dayOptions={dayOptions}
-            onCancel={handleCancelReservation}
-            cancelingId={cancelingId}
-          />
-        ) : null}
-        {view === "calendar" ? (
-          <ReservationsCalendarView
-            items={all}
-            onCancel={handleCancelReservation}
-            cancelingId={cancelingId}
-          />
-        ) : null}
+        <div role="tabpanel">
+          {view === "list" ? (
+            <ReservationsListView
+              today={today}
+              upcoming={upcoming}
+              unscheduled={unscheduled}
+              onCancel={handleCancelReservation}
+              cancelingId={cancelingId}
+            />
+          ) : null}
+          {view === "calendar" ? (
+            <ReservationsCalendarView
+              items={all}
+              onCancel={handleCancelReservation}
+              cancelingId={cancelingId}
+            />
+          ) : null}
+        </div>
       </div>
     </div>
   );
 }
+
+function guestHint(count: number) {
+  return count === 1 ? "1 comensal" : `${count} comensales`;
+}
+

@@ -8,23 +8,17 @@ import { PERMISSIONS, requirePermission, type AuthContext } from "@/lib/auth/per
 import { catalogService } from "@/lib/catalog/service";
 import { fetchOrderById } from "@/lib/orders/supabase-repository";
 import type { Order } from "@/lib/orders/types";
+import { buildStationTicketPdfsFromOrder } from "@/lib/printing/build-station-ticket-pdfs";
 import {
   printBarTicket,
   printKitchenTicket,
 } from "@/lib/printing/index";
-import {
-  buildPerStationTicketPdfs,
-  buildStationTicketsPdf,
-  bytesToBase64,
-} from "@/lib/printing/pdf-station-tickets";
-import { buildStationTicket } from "@/lib/printing/station-ticket";
-import { selectOrderItemsForStationTickets } from "@/lib/printing/order-ticket-items";
-import { splitOrderItemsByPrintStation } from "@/lib/printing/station-routing";
+import { bytesToBase64 } from "@/lib/printing/pdf-station-tickets";
 import type { PrintStation } from "@/lib/printing/station-routing";
 
 export type StationTicketPrintPayload = {
-  combinedPdfBase64: string;
-  stationPdfs: Array<{ station: PrintStation; pdfBase64: string }>;
+  combinedPdfBase64?: string;
+  stationPdfs?: Array<{ station: PrintStation; pdfBase64: string }>;
   stations: PrintStation[];
 };
 
@@ -65,61 +59,43 @@ export async function buildStationTicketPrintPayload(
     catalogService.getSnapshot(context, input.restaurantId),
   ]);
 
-  let items = selectOrderItemsForStationTickets(order.items);
-  if (input.itemIds?.length) {
-    const idSet = new Set(input.itemIds);
-    items = items.filter((item) => idSet.has(item.id));
-  }
-  if (items.length === 0) return null;
+  const built = await buildStationTicketPdfsFromOrder(order, catalog, {
+    itemIds: input.itemIds,
+    reprint: input.reprint,
+  });
+  if (!built) return null;
 
-  const { kitchen, bar } = splitOrderItemsByPrintStation(items, catalog);
-  const sentAt = new Date();
-  const tickets = (
-    [
-      buildStationTicket("kitchen", order, kitchen, sentAt, {
-        reprint: input.reprint,
-      }),
-      buildStationTicket("bar", order, bar, sentAt, {
-        reprint: input.reprint,
-      }),
-    ] as const
-  ).filter((t): t is NonNullable<typeof t> => t != null);
-
-  if (tickets.length === 0) return null;
-
-  const [combinedBytes, perStation] = await Promise.all([
-    buildStationTicketsPdf(tickets),
-    buildPerStationTicketPdfs(tickets),
-  ]);
-
+  const sentAt = built.tickets[0]?.sentAt ?? new Date().toISOString();
   const printPayload = {
     orderId: order.id,
     orderNumber: order.orderNumber,
     tableLabel: order.tableLabel,
-    itemIds: items.map((i) => i.id),
-    sentAt: sentAt.toISOString(),
+    itemIds: built.itemIds,
+    sentAt,
     reprint: input.reprint ?? false,
   };
 
-  for (const ticket of tickets) {
-    const job = {
-      restaurantId: input.restaurantId,
-      payload: { ...printPayload, station: ticket.station },
-    };
-    if (ticket.station === "kitchen") {
-      await printKitchenTicket(job);
-    } else {
-      await printBarTicket(job);
-    }
-  }
+  void Promise.all(
+    built.tickets.map((ticket) => {
+      const job = {
+        restaurantId: input.restaurantId,
+        payload: { ...printPayload, station: ticket.station },
+      };
+      return ticket.station === "kitchen"
+        ? printKitchenTicket(job)
+        : printBarTicket(job);
+    }),
+  );
 
   return {
-    combinedPdfBase64: bytesToBase64(combinedBytes),
-    stationPdfs: perStation.map(({ station, bytes }) => ({
+    combinedPdfBase64: built.combinedBytes
+      ? bytesToBase64(built.combinedBytes)
+      : undefined,
+    stationPdfs: built.stationPdfs?.map(({ station, bytes }) => ({
       station,
       pdfBase64: bytesToBase64(bytes),
     })),
-    stations: tickets.map((t) => t.station),
+    stations: built.tickets.map((t) => t.station),
   };
 }
 

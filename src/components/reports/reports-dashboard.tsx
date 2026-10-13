@@ -157,11 +157,9 @@ function StationMix({ rows }: { rows: StationSalesRow[] }) {
 export function ReportsDashboard({
   reports,
   siigoPending,
-  isMock = false,
 }: {
   reports: RestaurantReports;
   siigoPending: number;
-  isMock?: boolean;
 }) {
   const peakLabel =
     reports.peakHour == null
@@ -170,12 +168,6 @@ export function ReportsDashboard({
 
   return (
     <div className="space-y-6">
-      {isMock ? (
-        <p className="text-sm text-amber-700 dark:text-amber-400">
-          Datos de ejemplo (mock) — desactiva HAUS_MOCK_REPORTS al lanzar.
-        </p>
-      ) : null}
-
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <Card>
           <CardHeader className="pb-2">

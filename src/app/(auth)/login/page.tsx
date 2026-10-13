@@ -28,7 +28,7 @@ export default async function LoginPage({
               editor de plano en modo demo local.
             </p>
             <Button asChild className="w-full">
-              <Link href="/dashboard">Entrar en modo demo</Link>
+              <Link href="/floor">Entrar en modo demo</Link>
             </Button>
             <p className="text-xs text-muted-foreground">
               Cuando tengas credenciales, agrega{" "}

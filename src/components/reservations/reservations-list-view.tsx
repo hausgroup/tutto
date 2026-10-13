@@ -1,47 +1,51 @@
 "use client";
 
 import type { ReservationOverviewItem } from "@/lib/floor/reservations-overview";
-import { ReservationCard } from "@/components/reservations/reservation-card";
+import {
+  ReservationCard,
+  ReservationEmpty,
+  ReservationList,
+  ReservationSectionTitle,
+} from "@/components/reservations/reservation-card";
 
 function Section({
   title,
-  subtitle,
   items,
   empty,
+  showDate = false,
+  showTime = true,
   onCancel,
   cancelingId,
 }: {
   title: string;
-  subtitle?: string;
   items: ReservationOverviewItem[];
   empty: string;
+  showDate?: boolean;
+  showTime?: boolean;
   onCancel?: (item: ReservationOverviewItem) => void;
   cancelingId?: string | null;
 }) {
   return (
-    <section className="space-y-3">
-      <div>
-        <h2 className="text-sm font-semibold tracking-tight">{title}</h2>
-        {subtitle ? (
-          <p className="text-xs text-muted-foreground">{subtitle}</p>
-        ) : null}
-      </div>
+    <section className="flex flex-col gap-3">
+      <ReservationSectionTitle
+        title={title}
+        meta={items.length > 0 ? String(items.length) : undefined}
+      />
       {items.length === 0 ? (
-        <p className="rounded-2xl border border-dashed border-border/80 px-4 py-8 text-center text-sm text-muted-foreground">
-          {empty}
-        </p>
+        <ReservationEmpty>{empty}</ReservationEmpty>
       ) : (
-        <ul className="space-y-3">
+        <ReservationList>
           {items.map((item) => (
-            <li key={item.id}>
-              <ReservationCard
-                item={item}
-                onCancel={onCancel}
-                cancelPending={cancelingId === item.id}
-              />
-            </li>
+            <ReservationCard
+              key={item.id}
+              item={item}
+              showDate={showDate}
+              showTime={showTime}
+              onCancel={onCancel}
+              cancelPending={cancelingId === item.id}
+            />
           ))}
-        </ul>
+        </ReservationList>
       )}
     </section>
   );
@@ -61,31 +65,34 @@ export function ReservationsListView({
   cancelingId?: string | null;
 }) {
   return (
-    <>
+    <div className="flex flex-col gap-8">
       <Section
         title="Hoy"
-        subtitle="Ordenadas por hora de llegada"
         items={today}
         empty="No hay reservas para hoy."
         onCancel={onCancel}
         cancelingId={cancelingId}
       />
-      <Section
-        title="Próximos días"
-        items={upcoming}
-        empty="No hay reservas en los días siguientes."
-        onCancel={onCancel}
-        cancelingId={cancelingId}
-      />
+      {upcoming.length > 0 ? (
+        <Section
+          title="Próximos días"
+          items={upcoming}
+          empty=""
+          showDate
+          onCancel={onCancel}
+          cancelingId={cancelingId}
+        />
+      ) : null}
       {unscheduled.length > 0 ? (
         <Section
           title="Sin horario"
           items={unscheduled}
           empty=""
+          showTime={false}
           onCancel={onCancel}
           cancelingId={cancelingId}
         />
       ) : null}
-    </>
+    </div>
   );
 }

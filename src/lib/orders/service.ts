@@ -959,19 +959,23 @@ export const orderService = {
       throw new Error("ORDER_NOT_FOUND");
     }
 
-    await ordersDb.markPendingItemsSent(orderId);
-    const refreshed = (await ordersDb.fetchOrderById(orderId))!;
-    recalculateOrder(refreshed);
-    refreshed.status = "in_progress";
+    const sentAt = await ordersDb.markPendingItemsSent(orderId);
+    for (const item of order.items) {
+      if (item.status === "pending") {
+        item.status = "sent";
+        item.sentAt = sentAt;
+      }
+    }
+    recalculateOrder(order);
+    order.status = "in_progress";
     await ordersDb.updateOrderTotals(orderId, {
-      subtotalMinor: refreshed.subtotalMinor,
-      taxMinor: refreshed.taxMinor,
-      totalMinor: refreshed.totalMinor,
-      status: refreshed.status,
+      subtotalMinor: order.subtotalMinor,
+      taxMinor: order.taxMinor,
+      totalMinor: order.totalMinor,
+      status: order.status,
     });
-    const withTotals = (await ordersDb.fetchOrderById(orderId))!;
-    await syncTableForOrder(context, restaurantId, withTotals);
-    return withTotals;
+    await syncTableForOrder(context, restaurantId, order);
+    return order;
   },
 
   async getOrderCheckoutSummary(

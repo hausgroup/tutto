@@ -51,7 +51,10 @@ export const Select = forwardRef<HTMLButtonElement, SelectProps>(function Select
           ref={ref}
           id={controlId}
           aria-describedby={hintId}
-          className={[styles.trigger, className].filter(Boolean).join(" ")}
+          data-slot="select-trigger"
+          className={[styles.trigger, "haus-input-control", className]
+            .filter(Boolean)
+            .join(" ")}
         >
           {/* Radix keeps the real value for assistive tech; the visible copy below animates between values. */}
           <span className={styles.srOnly}><SelectPrimitive.Value placeholder={placeholder} /></span>

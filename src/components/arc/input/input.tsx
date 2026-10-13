@@ -76,7 +76,7 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(function Input(
   const describedBy = [props["aria-describedby"], hintId, errorId].filter(Boolean).join(" ") || undefined;
   return <div className={styles.field}>
     <label className={styles.label} htmlFor={controlId}>{label}</label>
-    <input {...props} id={controlId} ref={ref} className={[styles.input, className].filter(Boolean).join(" ")} aria-invalid={error ? true : props["aria-invalid"]} aria-describedby={describedBy}/>
+    <input {...props} id={controlId} ref={ref} data-slot="input" className={[styles.input, "haus-input-control", className].filter(Boolean).join(" ")} aria-invalid={error ? true : props["aria-invalid"]} aria-describedby={describedBy}/>
     <FieldMessage id={hintId} text={description} className={styles.description} />
     <FieldMessage id={errorId} text={error} className={styles.error} alert />
   </div>;

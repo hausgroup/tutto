@@ -4,13 +4,7 @@ import Link from "next/link";
 import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import {
-  AlertTriangle,
-  ChefHat,
-  Package,
-  Pencil,
-  Plus,
-} from "lucide-react";
+import { ChefHat, Pencil, Plus } from "lucide-react";
 import {
   createIngredientAction,
   stockMovementAction,
@@ -24,15 +18,22 @@ import type {
 import { INGREDIENT_UNITS } from "@/lib/inventory/schemas";
 import { formatCurrency } from "@/lib/utils/money";
 import { PageHeaderActions } from "@/components/layout/page-header-actions";
+import { PageStat, PageStatGrid } from "@/components/ui/page-stat";
 import { Button } from "@/components/ui/button";
+import { Dialog, DialogTrigger } from "@/components/ui/dialog";
 import {
-  Dialog,
-  DialogContent,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from "@/components/ui/dialog";
+  FormDialogBody,
+  FormDialogContent,
+  FormDialogFooter,
+  FormDialogHeader,
+  FormDialogTitle,
+  formSelectTriggerClassName,
+} from "@/components/ui/form-dialog";
+import {
+  ModalForm,
+  ModalFormField,
+  ModalFormRow,
+} from "@/components/ui/modal-form-grid";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { MoneyInput } from "@/components/ui/money-input";
@@ -44,15 +45,16 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Button as ArcButton } from "@/components/arc/button/button";
 import {
   COSY_ACCENT,
   SoftChip,
   SoftSection,
-  SoftStat,
   cosyPastel,
 } from "@/components/ui/soft";
 import { cn } from "@/lib/utils";
+
+type InventoryTab = "ingredients" | "movements";
 
 const MOVEMENT_LABELS: Record<string, string> = {
   purchase: "Compra",
@@ -145,49 +147,51 @@ function IngredientStockDialog({
                 : "Ajuste"}
         </Button>
       </DialogTrigger>
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>{titles[mode]}</DialogTitle>
-        </DialogHeader>
-        <p className="text-sm text-muted-foreground">{ingredient.name}</p>
-        <p className="text-sm">
-          Stock actual:{" "}
-          <strong>
-            {ingredient.stockQuantity} {ingredient.unit}
-          </strong>
-        </p>
-        <div className="space-y-3 py-2">
-          <div className="space-y-2">
-            <Label>
-              {mode === "count"
-                ? "Cantidad contada"
-                : mode === "adjust"
-                  ? "Cambio (+/-)"
-                  : "Cantidad"}
-            </Label>
-            <Input
-              type="number"
-              step="0.001"
-              value={value}
-              onChange={(e) => setValue(e.target.value)}
-              autoFocus
-            />
-          </div>
-          <div className="space-y-2">
-            <Label>Notas (opcional)</Label>
-            <Input
-              value={notes}
-              onChange={(e) => setNotes(e.target.value)}
-              placeholder="Proveedor, motivo…"
-            />
-          </div>
-        </div>
-        <DialogFooter>
+      <FormDialogContent>
+        <FormDialogHeader>
+          <FormDialogTitle>{titles[mode]}</FormDialogTitle>
+        </FormDialogHeader>
+        <FormDialogBody>
+          <p className="text-sm text-muted-foreground">{ingredient.name}</p>
+          <p className="mb-4 text-sm">
+            Stock actual:{" "}
+            <strong>
+              {ingredient.stockQuantity} {ingredient.unit}
+            </strong>
+          </p>
+          <ModalForm>
+            <ModalFormField
+              label={
+                mode === "count"
+                  ? "Cantidad contada"
+                  : mode === "adjust"
+                    ? "Cambio (+/-)"
+                    : "Cantidad"
+              }
+            >
+              <Input
+                type="number"
+                step="0.001"
+                value={value}
+                onChange={(e) => setValue(e.target.value)}
+                autoFocus
+              />
+            </ModalFormField>
+            <ModalFormField label="Notas (opcional)">
+              <Input
+                value={notes}
+                onChange={(e) => setNotes(e.target.value)}
+                placeholder="Proveedor, motivo…"
+              />
+            </ModalFormField>
+          </ModalForm>
+        </FormDialogBody>
+        <FormDialogFooter>
           <Button variant="outline" onClick={submit} disabled={pending}>
             Guardar
           </Button>
-        </DialogFooter>
-      </DialogContent>
+        </FormDialogFooter>
+      </FormDialogContent>
     </Dialog>
   );
 }
@@ -284,70 +288,67 @@ function IngredientEditor({
           </Button>
         )}
       </DialogTrigger>
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>
+      <FormDialogContent>
+        <FormDialogHeader>
+          <FormDialogTitle>
             {ingredient ? "Editar insumo" : "Nuevo insumo"}
-          </DialogTitle>
-        </DialogHeader>
-        <div className="grid gap-3 py-2">
-          <div className="space-y-2">
-            <Label>Nombre</Label>
-            <Input value={name} onChange={(e) => setName(e.target.value)} />
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div className="space-y-2">
-              <Label>Unidad</Label>
-              <Select value={unit} onValueChange={setUnit}>
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {INGREDIENT_UNITS.map((u) => (
-                    <SelectItem key={u} value={u}>
-                      {u}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-2">
-              <Label>Stock mínimo</Label>
-              <Input
-                type="number"
-                step="0.001"
-                value={minStock}
-                onChange={(e) => setMinStock(Number(e.target.value))}
-              />
-            </div>
-          </div>
-          <div className="space-y-2">
-            <Label>Costo por unidad (COP)</Label>
-            <MoneyInput value={costMinor} onValueChange={setCostMinor} />
-          </div>
-          {!ingredient ? (
-            <div className="space-y-2">
-              <Label>Stock inicial (opcional)</Label>
-              <Input
-                type="number"
-                step="0.001"
-                value={initialStock}
-                onChange={(e) => setInitialStock(Number(e.target.value))}
-              />
-            </div>
-          ) : (
-            <div className="flex items-center justify-between rounded-xl border border-border px-3 py-2">
-              <Label>Activo en inventario</Label>
-              <Switch checked={isActive} onCheckedChange={setIsActive} />
-            </div>
-          )}
-        </div>
-        <DialogFooter>
+          </FormDialogTitle>
+        </FormDialogHeader>
+        <FormDialogBody>
+          <ModalForm>
+            <ModalFormField label="Nombre">
+              <Input value={name} onChange={(e) => setName(e.target.value)} />
+            </ModalFormField>
+            <ModalFormRow cols={2}>
+              <ModalFormField label="Unidad">
+                <Select value={unit} onValueChange={setUnit}>
+                  <SelectTrigger className={formSelectTriggerClassName}>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {INGREDIENT_UNITS.map((u) => (
+                      <SelectItem key={u} value={u}>
+                        {u}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </ModalFormField>
+              <ModalFormField label="Stock mínimo">
+                <Input
+                  type="number"
+                  step="0.001"
+                  value={minStock}
+                  onChange={(e) => setMinStock(Number(e.target.value))}
+                />
+              </ModalFormField>
+            </ModalFormRow>
+            <ModalFormField label="Costo por unidad (COP)">
+              <MoneyInput value={costMinor} onValueChange={setCostMinor} />
+            </ModalFormField>
+            {!ingredient ? (
+              <ModalFormField label="Stock inicial (opcional)">
+                <Input
+                  type="number"
+                  step="0.001"
+                  value={initialStock}
+                  onChange={(e) => setInitialStock(Number(e.target.value))}
+                />
+              </ModalFormField>
+            ) : (
+              <div className="flex items-center justify-between rounded-xl border border-border px-3 py-2">
+                <Label>Activo en inventario</Label>
+                <Switch checked={isActive} onCheckedChange={setIsActive} />
+              </div>
+            )}
+          </ModalForm>
+        </FormDialogBody>
+        <FormDialogFooter>
           <Button onClick={save} disabled={pending}>
             {ingredient ? "Guardar" : "Crear"}
           </Button>
-        </DialogFooter>
-      </DialogContent>
+        </FormDialogFooter>
+      </FormDialogContent>
     </Dialog>
   );
 }
@@ -362,6 +363,7 @@ export function InventoryPanel({
   canManage: boolean;
 }) {
   const router = useRouter();
+  const [tab, setTab] = useState<InventoryTab>("ingredients");
   const [filterIngredient, setFilterIngredient] = useState<string>("all");
   const snapshot = initialSnapshot;
 
@@ -402,17 +404,13 @@ export function InventoryPanel({
         </div>
       </PageHeaderActions>
 
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-        <SoftStat
-          index={0}
-          icon={Package}
+      <PageStatGrid columns={3}>
+        <PageStat
           label="Insumos activos"
           value={activeIngredients.length}
           hint={`${snapshot.ingredients.length} en catálogo`}
         />
-        <SoftStat
-          index={3}
-          icon={AlertTriangle}
+        <PageStat
           label="Stock bajo"
           value={lowStock.length}
           hint={
@@ -421,13 +419,12 @@ export function InventoryPanel({
               : "Todo dentro del mínimo"
           }
         />
-        <SoftStat
-          index={1}
+        <PageStat
           label="Recetas"
           value={snapshot.recipes.length}
           hint="Productos con ficha técnica"
         />
-      </div>
+      </PageStatGrid>
 
       {lowStock.length > 0 ? (
         <SoftSection title="Alertas">
@@ -441,13 +438,36 @@ export function InventoryPanel({
         </SoftSection>
       ) : null}
 
-      <Tabs defaultValue="ingredients">
-        <TabsList>
-          <TabsTrigger value="ingredients">Insumos</TabsTrigger>
-          <TabsTrigger value="movements">Movimientos</TabsTrigger>
-        </TabsList>
+      <div className="flex flex-col gap-3">
+        <div
+          className="flex flex-wrap items-center gap-2"
+          role="tablist"
+          aria-label="Vista de inventario"
+        >
+          <ArcButton
+            type="button"
+            role="tab"
+            aria-selected={tab === "ingredients"}
+            variant={tab === "ingredients" ? "primary" : "secondary"}
+            size="sm"
+            onClick={() => setTab("ingredients")}
+          >
+            Insumos
+          </ArcButton>
+          <ArcButton
+            type="button"
+            role="tab"
+            aria-selected={tab === "movements"}
+            variant={tab === "movements" ? "primary" : "secondary"}
+            size="sm"
+            onClick={() => setTab("movements")}
+          >
+            Movimientos
+          </ArcButton>
+        </div>
 
-        <TabsContent value="ingredients" className="mt-4">
+        <div role="tabpanel">
+          {tab === "ingredients" ? (
           <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
             {snapshot.ingredients.map((ingredient, index) => {
               const isLow =
@@ -519,9 +539,10 @@ export function InventoryPanel({
               );
             })}
           </div>
-        </TabsContent>
+          ) : null}
 
-        <TabsContent value="movements" className="mt-4 space-y-3">
+          {tab === "movements" ? (
+          <div className="space-y-3">
           <div className="flex flex-wrap items-center gap-2">
             <Label className="text-muted-foreground">Filtrar</Label>
             <Select
@@ -607,8 +628,10 @@ export function InventoryPanel({
               </tbody>
             </table>
           </div>
-        </TabsContent>
-      </Tabs>
+          </div>
+          ) : null}
+        </div>
+      </div>
     </div>
   );
 }

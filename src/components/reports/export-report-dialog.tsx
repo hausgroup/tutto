@@ -12,15 +12,19 @@ import {
 import { calendarDateInBogota } from "@/lib/utils/date";
 import { Button } from "@/components/ui/button";
 import { SoftDatePicker } from "@/components/ui/date-picker";
+import { Dialog, DialogDescription } from "@/components/ui/dialog";
 import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
-import { Label } from "@/components/ui/label";
+  FormDialogBody,
+  FormDialogContent,
+  FormDialogFooter,
+  FormDialogHeader,
+  FormDialogTitle,
+} from "@/components/ui/form-dialog";
+import {
+  ModalForm,
+  ModalFormField,
+  ModalFormRow,
+} from "@/components/ui/modal-form-grid";
 import { cn } from "@/lib/utils";
 
 function downloadCsv(filename: string, csv: string) {
@@ -62,67 +66,66 @@ export function ExportReportDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="overflow-visible sm:max-w-md">
-        <DialogHeader>
-          <DialogTitle>Exportar reportes</DialogTitle>
-          <DialogDescription>
+      <FormDialogContent className="overflow-visible">
+        <FormDialogHeader>
+          <FormDialogTitle>Exportar reportes</FormDialogTitle>
+          <DialogDescription className="text-left">
             Elige el tipo de reporte y el rango de fechas (zona Bogotá).
           </DialogDescription>
-        </DialogHeader>
+        </FormDialogHeader>
 
-        <div className="space-y-4 py-1">
-          <div className="space-y-2">
-            <Label>Tipo de reporte</Label>
-            <div className="grid grid-cols-1 gap-2">
-              {EXPORT_REPORT_KINDS.map((option) => (
-                <button
-                  key={option}
-                  type="button"
-                  onClick={() => setKind(option)}
-                  className={cn(
-                    "rounded-full px-4 py-3 text-left text-sm transition-colors",
-                    kind === option
-                      ? "bg-foreground text-background"
-                      : "bg-muted text-foreground ring-1 ring-border",
-                  )}
-                >
-                  {EXPORT_REPORT_LABELS[option]}
-                </button>
-              ))}
-            </div>
-          </div>
+        <FormDialogBody className="overflow-visible">
+          <ModalForm>
+            <ModalFormField label="Tipo de reporte">
+              <div className="grid grid-cols-1 gap-2">
+                {EXPORT_REPORT_KINDS.map((option) => (
+                  <button
+                    key={option}
+                    type="button"
+                    onClick={() => setKind(option)}
+                    className={cn(
+                      "rounded-full px-4 py-3 text-left text-sm transition-colors",
+                      kind === option
+                        ? "bg-foreground text-background"
+                        : "bg-muted text-foreground ring-1 ring-border",
+                    )}
+                  >
+                    {EXPORT_REPORT_LABELS[option]}
+                  </button>
+                ))}
+              </div>
+            </ModalFormField>
 
-          <div className="grid grid-cols-2 gap-3">
-            <div className="space-y-2">
-              <Label htmlFor="export-from">Desde</Label>
-              <SoftDatePicker
-                id="export-from"
-                value={from}
-                max={to}
-                onChange={(next) => {
-                  setFrom(next);
-                  if (next > to) setTo(next);
-                }}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="export-to">Hasta</Label>
-              <SoftDatePicker
-                id="export-to"
-                value={to}
-                min={from}
-                max={today}
-                align="end"
-                onChange={(next) => {
-                  setTo(next);
-                  if (next < from) setFrom(next);
-                }}
-              />
-            </div>
-          </div>
-        </div>
+            <ModalFormRow cols={2}>
+              <ModalFormField label="Desde" htmlFor="export-from">
+                <SoftDatePicker
+                  id="export-from"
+                  value={from}
+                  max={to}
+                  onChange={(next) => {
+                    setFrom(next);
+                    if (next > to) setTo(next);
+                  }}
+                />
+              </ModalFormField>
+              <ModalFormField label="Hasta" htmlFor="export-to">
+                <SoftDatePicker
+                  id="export-to"
+                  value={to}
+                  min={from}
+                  max={today}
+                  align="end"
+                  onChange={(next) => {
+                    setTo(next);
+                    if (next < from) setFrom(next);
+                  }}
+                />
+              </ModalFormField>
+            </ModalFormRow>
+          </ModalForm>
+        </FormDialogBody>
 
-        <DialogFooter>
+        <FormDialogFooter>
           <Button
             variant="outline"
             onClick={() => onOpenChange(false)}
@@ -134,8 +137,8 @@ export function ExportReportDialog({
             <Download className="size-4" />
             {pending ? "Generando…" : "Descargar CSV"}
           </Button>
-        </DialogFooter>
-      </DialogContent>
+        </FormDialogFooter>
+      </FormDialogContent>
     </Dialog>
   );
 }

@@ -1,5 +1,4 @@
 import {
-  LayoutDashboard,
   Settings2,
   UtensilsCrossed,
   Package,
@@ -22,13 +21,12 @@ export type AppNavItem = {
 };
 
 export const operationNav: AppNavItem[] = [
-  { title: "Panel", href: "/dashboard", icon: LayoutDashboard },
+  { title: "Caja", href: "/cashier", icon: CircleDollarSign },
   { title: "Salón", href: "/floor", icon: UtensilsCrossed },
   { title: "Reservas", href: "/reservations", icon: CalendarDays },
   { title: "Menú", href: "/products", icon: Package },
   { title: "Inventario", href: "/inventory", icon: Warehouse },
   { title: "Recetas", href: "/recipes", icon: ChefHat },
-  { title: "Caja", href: "/cashier", icon: CircleDollarSign },
   { title: "Reportes", href: "/reports", icon: BarChart3 },
 ];
 

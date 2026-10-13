@@ -43,9 +43,9 @@ export function isDemoModeEnabled(): boolean {
   return process.env.HAUS_DEMO_MODE === "true";
 }
 
-/** Preview Reportes with rich mock sales until real data exists. */
+/** Opt-in mock sales for Reportes (`HAUS_MOCK_REPORTS=true`). */
 export function useMockReports(): boolean {
-  return process.env.HAUS_MOCK_REPORTS !== "false";
+  return process.env.HAUS_MOCK_REPORTS === "true";
 }
 
 /** Local UI development without Supabase credentials. */

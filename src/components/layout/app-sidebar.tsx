@@ -48,7 +48,7 @@ function NavItems({
         }
         tooltip={item.title}
       >
-        <Link href={item.soon ? "/dashboard" : item.href}>
+        <Link href={item.soon ? "/floor" : item.href}>
           <item.icon />
           <span>{item.title}</span>
           {item.soon ? (

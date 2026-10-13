@@ -306,16 +306,18 @@ export function SoftDatePicker({
         ref={triggerRef}
         id={id}
         type="button"
+        data-slot="input"
         aria-haspopup="dialog"
         aria-expanded={open}
         onClick={() => setOpen((current) => !current)}
-        className={
+        className={cn(
+          "haus-input-control rounded-input",
           triggerClassName ??
-          cn(
-            "flex h-11 w-full items-center gap-2 rounded-2xl bg-muted px-3.5 text-left text-sm text-foreground outline-none ring-1 ring-border transition-colors",
-            "hover:bg-muted/80 focus-visible:ring-2 focus-visible:ring-ring",
-          )
-        }
+            cn(
+              "flex h-11 w-full items-center gap-2 bg-muted px-3.5 text-left text-sm text-foreground outline-none ring-1 ring-input-border transition-colors",
+              "hover:bg-muted/80 focus-visible:ring-2 focus-visible:ring-ring",
+            ),
+        )}
       >
         <CalendarDays
           className="size-4 shrink-0 text-muted-foreground"

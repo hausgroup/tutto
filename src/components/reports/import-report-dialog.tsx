@@ -15,16 +15,20 @@ import {
 } from "@/lib/reports/historical-sales/types";
 import { formatCurrency } from "@/lib/utils/money";
 import { Button } from "@/components/ui/button";
+import { Dialog, DialogDescription } from "@/components/ui/dialog";
 import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
+  FormDialogBody,
+  FormDialogContent,
+  FormDialogFooter,
+  FormDialogHeader,
+  FormDialogTitle,
+  formSelectTriggerClassName,
+} from "@/components/ui/form-dialog";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
+import {
+  ModalForm,
+  ModalFormField,
+} from "@/components/ui/modal-form-grid";
 import {
   Select,
   SelectContent,
@@ -127,62 +131,60 @@ export function ImportReportDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChangeWrapped}>
-      <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-lg">
-        <DialogHeader>
-          <DialogTitle>Importar histórico</DialogTitle>
-          <DialogDescription>
+      <FormDialogContent className="sm:max-w-lg">
+        <FormDialogHeader>
+          <FormDialogTitle>Importar histórico</FormDialogTitle>
+          <DialogDescription className="text-left">
             Sube un CSV o XML de tu herramienta anterior. Mapeamos columnas
             comunes (incluidos los CSV que exporta Haus) y las sumamos a
             Reportes sin crear pedidos en POS.
           </DialogDescription>
-        </DialogHeader>
+        </FormDialogHeader>
 
-        <div className="space-y-4 py-1">
-          <div className="space-y-2">
-            <Label htmlFor="import-file">Archivo</Label>
-            <Input
-              ref={inputRef}
-              id="import-file"
-              type="file"
-              accept=".csv,.xml,text/csv,text/xml,application/xml"
-              onChange={(event) => {
-                const file = event.target.files?.[0];
-                if (file) readFile(file);
-              }}
-            />
-            {filename ? (
-              <p className="text-xs text-muted-foreground">{filename}</p>
-            ) : null}
-          </div>
+        <FormDialogBody>
+          <ModalForm>
+            <ModalFormField label="Archivo" htmlFor="import-file">
+              <Input
+                ref={inputRef}
+                id="import-file"
+                type="file"
+                accept=".csv,.xml,text/csv,text/xml,application/xml"
+                onChange={(event) => {
+                  const file = event.target.files?.[0];
+                  if (file) readFile(file);
+                }}
+              />
+              {filename ? (
+                <p className="text-xs text-muted-foreground">{filename}</p>
+              ) : null}
+            </ModalFormField>
 
-          <div className="space-y-2">
-            <Label htmlFor="import-source">Origen (opcional)</Label>
-            <Input
-              id="import-source"
-              value={sourceLabel}
-              onChange={(event) => setSourceLabel(event.target.value)}
-              placeholder="Ej. Siigo, anterior POS…"
-            />
-          </div>
+            <ModalFormField label="Origen (opcional)" htmlFor="import-source">
+              <Input
+                id="import-source"
+                value={sourceLabel}
+                onChange={(event) => setSourceLabel(event.target.value)}
+                placeholder="Ej. Siigo, anterior POS…"
+              />
+            </ModalFormField>
 
-          <div className="space-y-2">
-            <Label>Formato / mapeo</Label>
-            <Select
-              value={profile}
-              onValueChange={(value) => setProfile(value as ImportProfileId)}
-            >
-              <SelectTrigger>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {IMPORT_PROFILE_IDS.map((id) => (
-                  <SelectItem key={id} value={id}>
-                    {IMPORT_PROFILE_LABELS[id]}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
+            <ModalFormField label="Formato / mapeo">
+              <Select
+                value={profile}
+                onValueChange={(value) => setProfile(value as ImportProfileId)}
+              >
+                <SelectTrigger className={formSelectTriggerClassName}>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {IMPORT_PROFILE_IDS.map((id) => (
+                    <SelectItem key={id} value={id}>
+                      {IMPORT_PROFILE_LABELS[id]}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </ModalFormField>
 
           {preview ? (
             <div className="space-y-2 rounded-2xl bg-muted/50 p-4 text-sm ring-1 ring-border">
@@ -229,9 +231,10 @@ export function ImportReportDialog({
               </div>
             </div>
           ) : null}
-        </div>
+          </ModalForm>
+        </FormDialogBody>
 
-        <DialogFooter className="flex-col gap-2 sm:flex-row sm:justify-end">
+        <FormDialogFooter className="flex-col gap-2 sm:flex-row sm:justify-end">
           <Button
             type="button"
             variant="outline"
@@ -263,8 +266,8 @@ export function ImportReportDialog({
             <Upload className="size-4" />
             {pending ? "Importando…" : preview ? "Importar" : "Previsualizar"}
           </Button>
-        </DialogFooter>
-      </DialogContent>
+        </FormDialogFooter>
+      </FormDialogContent>
     </Dialog>
   );
 }

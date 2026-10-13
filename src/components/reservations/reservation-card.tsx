@@ -1,151 +1,165 @@
 "use client";
 
-import { Users, UtensilsCrossed } from "lucide-react";
-import { Button } from "@/components/arc/button/button";
-import { Badge } from "@/components/arc/badge/badge";
+import type { ReactNode } from "react";
+import { Users } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import type { ReservationOverviewItem } from "@/lib/floor/reservations-overview";
 import { cn } from "@/lib/utils";
 
+const TIME_ZONE = "America/Bogota";
+
 export function formatReservationTime(iso: string | null) {
   if (!iso) return "—";
-  return new Intl.DateTimeFormat("es-CO", {
-    timeZone: "America/Bogota",
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: TIME_ZONE,
     hour: "numeric",
     minute: "2-digit",
+    hour12: true,
+  }).formatToParts(new Date(iso));
+  const hour = parts.find((part) => part.type === "hour")?.value ?? "";
+  const minute = parts.find((part) => part.type === "minute")?.value ?? "";
+  const period =
+    parts.find((part) => part.type === "dayPeriod")?.value.toLowerCase() ?? "";
+  return `${hour}:${minute} ${period}`;
+}
+
+export function formatReservationDay(iso: string) {
+  return new Intl.DateTimeFormat("es-CO", {
+    timeZone: TIME_ZONE,
+    day: "numeric",
+    month: "short",
   }).format(new Date(iso));
+}
+
+export function ReservationSectionTitle({
+  title,
+  meta,
+}: {
+  title: string;
+  meta?: string;
+}) {
+  return (
+    <div className="flex h-9 items-center justify-between gap-4">
+      <h2 className="min-w-0 truncate text-[15px] font-semibold leading-none tracking-tight">
+        {title}
+      </h2>
+      {meta ? (
+        <p className="text-[13px] leading-none tabular-nums text-muted-foreground">
+          {meta}
+        </p>
+      ) : null}
+    </div>
+  );
+}
+
+export function ReservationEmpty({ children }: { children: ReactNode }) {
+  return (
+    <p className="rounded-2xl bg-card px-4 py-10 text-center text-[13px] leading-5 text-muted-foreground ring-1 ring-border">
+      {children}
+    </p>
+  );
+}
+
+export function ReservationList({ children }: { children: ReactNode }) {
+  return (
+    <ul className="overflow-hidden rounded-2xl bg-card ring-1 ring-border">
+      {children}
+    </ul>
+  );
 }
 
 export function ReservationCard({
   item,
-  compact = false,
   showTime = true,
-  className,
+  showDate = false,
   onCancel,
   cancelPending = false,
 }: {
   item: ReservationOverviewItem;
-  compact?: boolean;
   showTime?: boolean;
-  className?: string;
+  showDate?: boolean;
   onCancel?: (item: ReservationOverviewItem) => void;
   cancelPending?: boolean;
 }) {
-  const tableLabels = item.tables.map((t) => t.label).join(", ");
+  const tableLabels = item.tables.map((table) => table.label).join(", ");
+  const tableLine = item.tables
+    .map((table) => `${table.label} (${table.areaName})`)
+    .join(", ");
+  const detail = [tableLine, item.occasion].filter(Boolean).join(" · ");
+  const overCapacity = item.partySize > item.totalCapacity;
+  const partyLabel = item.partySize === 1 ? "persona" : "personas";
 
-  if (compact) {
-    return (
+  return (
+    <li className="border-b border-border last:border-b-0">
       <article
         className={cn(
-          "rounded-xl border border-border/80 bg-card/90 p-3 shadow-sm",
-          className,
+          "grid items-center gap-x-4 px-4 py-3.5",
+          onCancel
+            ? "grid-cols-[4.75rem_minmax(0,1fr)_auto]"
+            : "grid-cols-[4.75rem_minmax(0,1fr)]",
         )}
       >
-        <div className="flex items-start justify-between gap-2">
-          <div className="min-w-0">
-            <h3 className="truncate text-sm font-semibold">{item.guestName}</h3>
-            <p className="mt-0.5 truncate text-xs text-muted-foreground">
-              {item.occasion}
-            </p>
-          </div>
-          <Badge tone="neutral" size="sm" className="shrink-0 tabular-nums">
-            <Users className="size-3" aria-hidden />
-            {item.partySize}
-          </Badge>
-        </div>
-        <div className="mt-2 flex flex-wrap gap-1">
-          {item.tables.map((table) => (
-            <span
-              key={table.id}
-              className="inline-flex items-center gap-0.5 rounded-full bg-muted/60 px-2 py-0.5 text-[11px] font-medium"
-            >
-              <UtensilsCrossed className="size-2.5 opacity-60" aria-hidden />
-              {table.label}
+        <div className="flex flex-col gap-0.5 text-right">
+          {showTime ? (
+            <>
+              <time
+                className="block whitespace-nowrap text-[15px] font-semibold leading-5 tabular-nums"
+                dateTime={item.scheduledAt ?? undefined}
+              >
+                {formatReservationTime(item.scheduledAt)}
+              </time>
+              {showDate && item.scheduledAt ? (
+                <p className="text-[13px] leading-5 text-muted-foreground">
+                  {formatReservationDay(item.scheduledAt)}
+                </p>
+              ) : null}
+            </>
+          ) : (
+            <span className="text-[13px] font-medium leading-5 text-muted-foreground">
+              Sin hora
             </span>
-          ))}
+          )}
+          <p
+            className="inline-flex items-center justify-end gap-1 text-[13px] leading-5 tabular-nums text-muted-foreground"
+            title={`${item.partySize} ${partyLabel}`}
+          >
+            <Users className="size-3.5 shrink-0" aria-hidden />
+            <span>{item.partySize}</span>
+            <span className="sr-only">{partyLabel}</span>
+          </p>
+        </div>
+        <div className="min-w-0 py-0.5">
+          <h3 className="truncate text-[15px] font-semibold leading-5 tracking-tight">
+            {item.guestName}
+          </h3>
+          {detail ? (
+            <p
+              className="mt-0.5 truncate text-[13px] leading-5 text-muted-foreground"
+              title={detail}
+            >
+              {item.tables.length === 1 ? "Mesa" : "Mesas"} {detail}
+            </p>
+          ) : null}
+          {overCapacity ? (
+            <p className="mt-1 text-[13px] leading-5 text-amber-800 dark:text-amber-200">
+              El grupo ({item.partySize}) supera la capacidad ({item.totalCapacity}).
+            </p>
+          ) : null}
         </div>
         {onCancel ? (
           <Button
             type="button"
-            variant="ghost"
+            variant="destructive"
             size="sm"
-            className="mt-2 h-8 text-destructive hover:text-destructive"
-            loading={cancelPending}
+            className="shrink-0"
+            disabled={cancelPending}
             onClick={() => onCancel(item)}
           >
-            Cancelar reserva
+            {cancelPending ? "Cancelando…" : "Cancelar"}
           </Button>
         ) : null}
-        <p className="sr-only">Mesas: {tableLabels}</p>
       </article>
-    );
-  }
-
-  return (
-    <article
-      className={cn(
-        "rounded-2xl border border-border/80 bg-card/80 p-4 shadow-sm backdrop-blur-sm transition-colors hover:border-border",
-        className,
-      )}
-    >
-      <div className="flex gap-4">
-        {showTime ? (
-          <div className="flex w-16 shrink-0 flex-col items-center justify-center rounded-xl bg-muted/60 px-2 py-3 text-center">
-            <span className="text-lg font-semibold tabular-nums leading-none">
-              {formatReservationTime(item.scheduledAt)}
-            </span>
-            <span className="mt-1 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
-              {item.scheduledAt ? "llegada" : "sin hora"}
-            </span>
-          </div>
-        ) : null}
-        <div className="min-w-0 flex-1 space-y-2">
-          <div className="flex flex-wrap items-start justify-between gap-2">
-            <h3 className="text-base font-semibold leading-tight tracking-tight">
-              {item.guestName}
-            </h3>
-            <Badge tone="neutral" size="sm" className="tabular-nums">
-              <Users className="size-3" aria-hidden />
-              {item.partySize}
-            </Badge>
-          </div>
-          <p className="text-sm text-muted-foreground">{item.occasion}</p>
-          <div className="flex flex-wrap gap-1.5">
-            {item.tables.map((table) => (
-              <span
-                key={table.id}
-                className="inline-flex items-center gap-1 rounded-full border border-border/70 bg-background/80 px-2.5 py-0.5 text-xs font-medium"
-                title={`${table.areaName} · ${table.capacity} puestos`}
-              >
-                <UtensilsCrossed
-                  className="size-3 text-muted-foreground"
-                  aria-hidden
-                />
-                {table.label}
-                <span className="text-muted-foreground">· {table.areaName}</span>
-              </span>
-            ))}
-          </div>
-          {item.partySize > item.totalCapacity ? (
-            <p className="text-xs text-amber-700 dark:text-amber-400">
-              Capacidad en mesas ({item.totalCapacity}) menor que el grupo (
-              {item.partySize}).
-            </p>
-          ) : null}
-          {onCancel ? (
-            <Button
-              type="button"
-              variant="secondary"
-              size="sm"
-              className="text-destructive hover:text-destructive"
-              loading={cancelPending}
-              onClick={() => onCancel(item)}
-            >
-              Cancelar reserva
-            </Button>
-          ) : null}
-          <p className="sr-only">Mesas: {tableLabels}</p>
-        </div>
-      </div>
-    </article>
+      <p className="sr-only">Mesas: {tableLabels}</p>
+    </li>
   );
 }

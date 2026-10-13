@@ -15,6 +15,11 @@ export default async function ReservationsPage() {
   if (!restaurantId) redirect("/settings");
 
   const snapshot = await floorService.getSnapshot(context, restaurantId);
+  const restaurantName =
+    context.memberships.find((m) => m.restaurantId === restaurantId)
+      ?.restaurantName ?? "Restaurante";
 
-  return <ReservationsPanel snapshot={snapshot} />;
+  return (
+    <ReservationsPanel snapshot={snapshot} restaurantName={restaurantName} />
+  );
 }

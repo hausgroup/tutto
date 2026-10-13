@@ -81,14 +81,16 @@ export function SoftSection({
   action,
   children,
   className,
+  id,
 }: {
   title: string;
   action?: React.ReactNode;
   children: React.ReactNode;
   className?: string;
+  id?: string;
 }) {
   return (
-    <section className={cn("space-y-3", className)}>
+    <section id={id} className={cn("space-y-3", className)}>
       <div className="flex items-center justify-between gap-3">
         <h2 className="text-sm font-medium text-muted-foreground">{title}</h2>
         {action}

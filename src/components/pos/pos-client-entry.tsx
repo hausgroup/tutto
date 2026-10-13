@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { useSearchParams } from "next/navigation";
 import { toast } from "sonner";
 import { MobilePosView } from "@/components/pos/mobile-pos-view";
 import { PosLoadingShell } from "@/components/pos/pos-loading-shell";
@@ -11,7 +10,6 @@ import {
   getCachedPosCatalog,
   getPendingPosBoot,
   patchCachedPosAttendantName,
-  warmPosCatalog,
   warmPosTable,
 } from "@/lib/pos/client-cache";
 import {
@@ -58,12 +56,12 @@ function placeholderOrder(
 export function PosClientEntry({
   tableId,
   tableLabel,
+  staffFromUrl = "",
 }: {
   tableId: string;
   tableLabel: string;
+  staffFromUrl?: string;
 }) {
-  const searchParams = useSearchParams();
-  const staffFromUrl = searchParams.get("staff")?.trim() ?? "";
 
   const [boot, setBoot] = useState<PosBootstrap | null>(() =>
     getCachedPosBoot(tableId),
@@ -88,14 +86,15 @@ export function PosClientEntry({
   useEffect(() => {
     let cancelled = false;
 
-    void warmPosCatalog().then((warm) => {
-      if (!cancelled && warm) setCatalogWarm(warm);
-    });
-
     const pending = getPendingPosBoot(tableId) ?? warmPosTable(tableId);
     void pending
       .then((result) => {
         if (!cancelled) {
+          setCatalogWarm({
+            catalog: result.catalog,
+            attendantName: result.attendantName,
+            restaurantId: result.restaurantId,
+          });
           setBoot(
             attendantOverride
               ? { ...result, attendantName: attendantOverride }
@@ -131,7 +130,10 @@ export function PosClientEntry({
     catalogWarm?.attendantName ||
     "";
   const restaurantId =
-    boot?.restaurantId ?? catalogWarm?.restaurantId ?? "";
+    boot?.restaurantId ??
+    catalogWarm?.restaurantId ??
+    getCachedFloorBoot()?.snapshot.areas[0]?.restaurantId ??
+    "";
   const tableReservation =
     boot?.tableReservation ?? tableReservationFromFloorCache(tableId);
 

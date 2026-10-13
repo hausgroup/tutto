@@ -118,6 +118,18 @@ export function ymdInRestaurantZone(date: Date): string {
   }).format(date);
 }
 
+/** Calendar day arithmetic in restaurant TZ (ymd is `en-CA` format). */
+export function addDaysToYmd(ymd: string, days: number): string {
+  const [y, m, d] = ymd.split("-").map(Number);
+  const anchor = new Date(Date.UTC(y, m - 1, d, 17, 0, 0));
+  anchor.setUTCDate(anchor.getUTCDate() + days);
+  return ymdInRestaurantZone(anchor);
+}
+
+export function tomorrowYmdInRestaurantZone(): string {
+  return addDaysToYmd(ymdInRestaurantZone(new Date()), 1);
+}
+
 export function partitionReservationsByDay(items: ReservationOverviewItem[]) {
   const todayYmd = ymdInRestaurantZone(new Date());
   const today: ReservationOverviewItem[] = [];

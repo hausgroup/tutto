@@ -34,8 +34,8 @@ import {
   removeOrderLineAction,
   sendOrderAction,
 } from "@/lib/orders/actions";
-import { printStationTicketsAction } from "@/lib/printing/actions";
-import { printStationTicketPdfs } from "@/lib/printing/browser-print";
+import { buildStationTicketPdfsFromOrder } from "@/lib/printing/build-station-ticket-pdfs";
+import { printStationTicketPdfPayload } from "@/lib/printing/browser-print";
 import {
   applyOptimisticMoveBarUnitToWithMeal,
   applyOptimisticQuantityDelta,
@@ -72,6 +72,7 @@ import {
   patchCachedFloorCancelReservation,
   patchCachedFloorPendingBarDrinks,
   patchCachedFloorTableStatus,
+  refreshFloorBootInBackground,
   warmFloorBoot,
 } from "@/lib/floor/client-cache";
 import { formatCurrency } from "@/lib/utils/money";
@@ -202,7 +203,7 @@ export function MobilePosView({
       patchCachedFloorTableStatus(tableId, "available");
       setActiveReservation(null);
       clearCachedPosBoot(tableId);
-      void warmFloorBoot({ force: true });
+      refreshFloorBootInBackground();
       router.push("/floor");
     });
   }
@@ -808,29 +809,14 @@ export function MobilePosView({
     );
   }
 
-  async function runPrintOrderTickets(
-    reprint: boolean,
-    itemIds?: string[],
-    printResult?: Awaited<ReturnType<typeof printStationTicketsAction>>,
-  ) {
-    const resolved =
-      printResult ??
-      (await printStationTicketsAction({
-        orderId: orderRef.current.id,
-        reprint,
-        itemIds,
-      }));
-    if (resolved.error) {
-      toast.error(resolved.error);
-      return false;
-    }
-    if (!resolved.combinedPdfBase64 && !resolved.stationPdfs?.length) {
-      return false;
-    }
-    await printStationTicketPdfs({
-      combinedPdfBase64: resolved.combinedPdfBase64,
-      stationPdfs: resolved.stationPdfs,
-    });
+  async function runPrintOrderTickets(reprint: boolean, itemIds?: string[]) {
+    const payload = await buildStationTicketPdfsFromOrder(
+      orderRef.current,
+      catalogRef.current,
+      { itemIds, reprint },
+    );
+    if (!payload) return false;
+    await printStationTicketPdfPayload(payload);
     return true;
   }
 
@@ -850,10 +836,20 @@ export function MobilePosView({
       setSendPending(true);
       try {
         await syncQueue.current;
-        const orderId = orderRef.current.id;
-        const itemIdsToPrint = orderRef.current.items
+        const snapshot = orderRef.current;
+        const orderId = snapshot.id;
+        const itemIdsToPrint = snapshot.items
           .filter((item) => item.status === "pending")
           .map((item) => item.id);
+
+        const printPayloadPromise =
+          itemIdsToPrint.length > 0
+            ? buildStationTicketPdfsFromOrder(
+                snapshot,
+                catalogRef.current,
+                { itemIds: itemIdsToPrint },
+              )
+            : null;
 
         const result = await sendOrderAction(orderId);
         if (result.error) {
@@ -880,10 +876,13 @@ export function MobilePosView({
           );
         }
 
-        if (itemIdsToPrint.length > 0) {
-          void runPrintOrderTickets(false, itemIdsToPrint).catch(() => {
+        if (printPayloadPromise) {
+          try {
+            const payload = await printPayloadPromise;
+            if (payload) await printStationTicketPdfPayload(payload);
+          } catch {
             toast.error("No pudimos imprimir los tickets.");
-          });
+          }
         }
       } finally {
         setSendPending(false);
@@ -903,37 +902,35 @@ export function MobilePosView({
       patchCachedFloorBillTotal(order.tableId, 0);
       patchCachedFloorPendingBarDrinks(order.tableId, false);
     }
-    void warmFloorBoot({ force: true });
+    refreshFloorBootInBackground();
     router.push("/floor");
   }
 
   function goToSalon() {
     const current = orderRef.current;
     const tableId = current.tableId;
+    const hasReservation = activeReservation != null;
 
-    const finish = () => {
-      void warmFloorBoot({ force: true });
-      router.push("/floor");
-    };
-
-    if (!tableId || orderHasSentBill(current)) {
-      finish();
-      return;
-    }
-
-    void releaseTableSessionAction(tableId).then((result) => {
-      if (result.error) {
-        toast.error(result.error);
-      }
+    if (tableId) {
       clearCachedPosBoot(tableId);
       patchCachedFloorTableStatus(
         tableId,
-        floorSalonStatusFromPos(false, activeReservation != null),
+        floorSalonStatusFromPos(orderHasSentBill(current), hasReservation),
       );
-      patchCachedFloorBillTotal(tableId, 0);
-      patchCachedFloorPendingBarDrinks(tableId, false);
-      finish();
-    });
+      if (!orderHasSentBill(current)) {
+        patchCachedFloorBillTotal(tableId, 0);
+        patchCachedFloorPendingBarDrinks(tableId, false);
+      }
+    }
+
+    refreshFloorBootInBackground();
+    router.push("/floor");
+
+    if (tableId && !orderHasSentBill(current)) {
+      void releaseTableSessionAction(tableId).then((result) => {
+        if (result.error) toast.error(result.error);
+      });
+    }
   }
 
   function primaryAction() {

@@ -1,7 +1,5 @@
 "use client";
 
-import type { ReactNode } from "react";
-import Link from "next/link";
 import { useEffect, useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
@@ -9,8 +7,8 @@ import {
   Coffee,
   CupSoda,
   IceCream,
-  Pencil,
   Plus,
+  SlidersHorizontal,
   Soup,
   Trash2,
   UtensilsCrossed,
@@ -24,10 +22,8 @@ import {
   setProductActiveAction,
   updateProductAction,
 } from "@/lib/catalog/actions";
-import {
-  MENU_ALLERGENS,
-  type AllergenId,
-} from "@/lib/catalog/allergens";
+import { AllergenPicker } from "@/components/catalog/allergen-picker";
+import type { AllergenId } from "@/lib/catalog/allergens";
 import type {
   CatalogSnapshot,
   PreparationStation,
@@ -37,17 +33,23 @@ import type {
 import { invalidatePosCatalogCache } from "@/lib/pos/client-cache";
 import { formatCurrency } from "@/lib/utils/money";
 import { Button } from "@/components/ui/button";
+import { Dialog, DialogTrigger } from "@/components/ui/dialog";
 import {
-  Dialog,
-  DialogContent,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from "@/components/ui/dialog";
+  FormDialogBody,
+  FormDialogContent,
+  FormDialogFooter,
+  FormDialogHeader,
+  FormDialogTitle,
+  formSelectTriggerClassName,
+} from "@/components/ui/form-dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { MoneyInput } from "@/components/ui/money-input";
+import {
+  ModalForm,
+  ModalFormField,
+  ModalFormRow,
+} from "@/components/ui/modal-form-grid";
 import {
   Select,
   SelectContent,
@@ -82,42 +84,24 @@ const STATION_OPTIONS: { value: PreparationStation; label: string }[] = [
   { value: "other", label: "Otra" },
 ];
 
-/** Match `Input` height and surface in product form. */
-const MENU_SELECT_TRIGGER_CLASS =
-  "h-11 w-full rounded-2xl border-0 bg-muted shadow-none ring-1 ring-border focus:ring-2 focus:ring-ring data-[size=default]:h-11 dark:bg-muted";
-
 const MENU_TEXTAREA_CLASS =
-  "min-h-[5rem] resize-none rounded-2xl border-0 bg-muted ring-1 ring-border focus-visible:ring-2 focus-visible:ring-ring dark:bg-muted";
-
-function MenuFormField({
-  label,
-  htmlFor,
-  children,
-  className,
-}: {
-  label: string;
-  htmlFor?: string;
-  children: ReactNode;
-  className?: string;
-}) {
-  return (
-    <div className={cn("flex flex-col gap-1.5", className)}>
-      <Label
-        htmlFor={htmlFor}
-        className="text-xs font-normal text-muted-foreground"
-      >
-        {label}
-      </Label>
-      {children}
-    </div>
-  );
-}
+  "min-h-[5rem] resize-none rounded-input border-0 bg-muted ring-1 ring-input-border focus-visible:ring-2 focus-visible:ring-ring dark:bg-muted";
 
 function stationLabel(station: string) {
   return (
     STATION_OPTIONS.find((option) => option.value === station)?.label ??
     "Cocina"
   );
+}
+
+function menuCategorySectionId(categoryId: string) {
+  return `menu-category-${categoryId}`;
+}
+
+function scrollToMenuCategory(categoryId: string) {
+  document
+    .getElementById(menuCategorySectionId(categoryId))
+    ?.scrollIntoView({ behavior: "smooth", block: "start" });
 }
 
 export function MenuCatalog({
@@ -442,12 +426,12 @@ export function MenuCatalog({
                   <Button
                     type="button"
                     variant="ghost"
-                    size="sm"
-                    className="-mt-1 -mr-1 h-7 shrink-0 px-2 text-xs"
+                    size="icon-sm"
+                    className="-mt-1 -mr-1 shrink-0"
+                    aria-label={`Editar ${product.name}`}
                     onClick={() => openProductEditor(product)}
                   >
-                    <Pencil className="size-3.5" />
-                    Editar
+                    <SlidersHorizontal className="size-3.5" />
                   </Button>
                 ) : null}
               </div>
@@ -491,12 +475,9 @@ export function MenuCatalog({
 
   return (
     <div className="space-y-8">
-      <PageHeaderActions>
-        <div className="flex flex-wrap items-center justify-end gap-2">
-          <Button asChild variant="outline" size="sm">
-            <Link href="/recipes">Recetas</Link>
-          </Button>
-          {canManage ? (
+      {canManage ? (
+        <PageHeaderActions>
+          <div className="flex flex-wrap items-center justify-end gap-2">
             <>
               <Dialog
                 open={categoryOpen}
@@ -515,50 +496,54 @@ export function MenuCatalog({
                     Categoría
                   </Button>
                 </DialogTrigger>
-                <DialogContent>
-                  <DialogHeader>
-                    <DialogTitle>Nueva categoría</DialogTitle>
-                  </DialogHeader>
-                  <div className="grid gap-3 py-2">
-                    <div className="space-y-2">
-                      <Label htmlFor="category-name">Nombre</Label>
-                      <Input
-                        id="category-name"
-                        value={categoryName}
-                        onChange={(event) => setCategoryName(event.target.value)}
-                        placeholder="Ej. Entradas"
-                        autoFocus
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label>Estación de pedidos</Label>
-                      <Select
-                        value={categoryStation}
-                        onValueChange={(value) =>
-                          setCategoryStation(value as PreparationStation)
-                        }
-                      >
-                        <SelectTrigger>
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {STATION_OPTIONS.map((option) => (
-                            <SelectItem
-                              key={option.value}
-                              value={option.value}
-                            >
-                              {option.label}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                      <p className="text-xs text-muted-foreground">
-                        Los productos nuevos en esta categoría usarán esta
-                        estación por defecto (Cocina, Bar, etc.).
-                      </p>
-                    </div>
-                  </div>
-                  <DialogFooter>
+                <FormDialogContent>
+                  <FormDialogHeader>
+                    <FormDialogTitle>Nueva categoría</FormDialogTitle>
+                  </FormDialogHeader>
+                  <FormDialogBody>
+                    <ModalForm>
+                      <ModalFormField label="Nombre" htmlFor="category-name">
+                        <Input
+                          id="category-name"
+                          value={categoryName}
+                          onChange={(event) =>
+                            setCategoryName(event.target.value)
+                          }
+                          placeholder="Ej. Entradas"
+                          autoFocus
+                        />
+                      </ModalFormField>
+                      <ModalFormField label="Estación de pedidos">
+                        <Select
+                          value={categoryStation}
+                          onValueChange={(value) =>
+                            setCategoryStation(value as PreparationStation)
+                          }
+                        >
+                          <SelectTrigger
+                            className={formSelectTriggerClassName}
+                          >
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {STATION_OPTIONS.map((option) => (
+                              <SelectItem
+                                key={option.value}
+                                value={option.value}
+                              >
+                                {option.label}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        <p className="text-xs text-muted-foreground">
+                          Los productos nuevos en esta categoría usarán esta
+                          estación por defecto (Cocina, Bar, etc.).
+                        </p>
+                      </ModalFormField>
+                    </ModalForm>
+                  </FormDialogBody>
+                  <FormDialogFooter>
                     <Button
                       variant="outline"
                       disabled={pending || !categoryName.trim()}
@@ -566,8 +551,8 @@ export function MenuCatalog({
                     >
                       Crear categoría
                     </Button>
-                  </DialogFooter>
-                </DialogContent>
+                  </FormDialogFooter>
+                </FormDialogContent>
               </Dialog>
 
               <Dialog
@@ -587,21 +572,22 @@ export function MenuCatalog({
                     Producto
                   </Button>
                 </DialogTrigger>
-                <DialogContent
-                  className="flex max-h-[min(92dvh,36rem)] flex-col gap-0 overflow-hidden p-0 sm:max-w-md"
-                >
-                  <DialogHeader className="border-b border-border/60 px-5 py-4 text-left">
-                    <DialogTitle className="text-base font-semibold">
+                <FormDialogContent>
+                  <FormDialogHeader>
+                    <FormDialogTitle>
                       {editingProduct ? "Editar producto" : "Nuevo producto"}
-                    </DialogTitle>
-                  </DialogHeader>
+                    </FormDialogTitle>
+                  </FormDialogHeader>
                   {categories.length === 0 ? (
-                    <p className="px-5 py-4 text-sm text-muted-foreground">
-                      Crea una categoría primero.
-                    </p>
+                    <FormDialogBody>
+                      <p className="text-sm text-muted-foreground">
+                        Crea una categoría primero.
+                      </p>
+                    </FormDialogBody>
                   ) : (
-                    <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-5 py-4">
-                      <MenuFormField label="Nombre" htmlFor="product-name">
+                    <FormDialogBody>
+                      <ModalForm>
+                      <ModalFormField label="Nombre" htmlFor="product-name">
                         <Input
                           id="product-name"
                           value={name}
@@ -609,15 +595,17 @@ export function MenuCatalog({
                           placeholder="Classic Burger"
                           autoFocus
                         />
-                      </MenuFormField>
+                      </ModalFormField>
 
-                      <div className="grid gap-4 sm:grid-cols-2">
-                        <MenuFormField label="Categoría">
+                      <ModalFormRow cols={2}>
+                        <ModalFormField label="Categoría">
                           <Select
                             value={categoryId}
                             onValueChange={onProductCategoryChange}
                           >
-                            <SelectTrigger className={MENU_SELECT_TRIGGER_CLASS}>
+                            <SelectTrigger
+                              className={formSelectTriggerClassName}
+                            >
                               <SelectValue placeholder="Categoría" />
                             </SelectTrigger>
                             <SelectContent>
@@ -631,25 +619,27 @@ export function MenuCatalog({
                               ))}
                             </SelectContent>
                           </Select>
-                        </MenuFormField>
-                        <MenuFormField label="Precio (COP)" htmlFor="product-price">
+                        </ModalFormField>
+                        <ModalFormField label="Precio (COP)" htmlFor="product-price">
                           <MoneyInput
                             id="product-price"
                             value={priceMinor}
                             onValueChange={setPriceMinor}
                           />
-                        </MenuFormField>
-                      </div>
+                        </ModalFormField>
+                      </ModalFormRow>
 
-                      <div className="grid gap-4 sm:grid-cols-3">
-                        <MenuFormField label="Impuesto">
+                      <ModalFormRow cols={3}>
+                        <ModalFormField label="Impuesto">
                           <Select
                             value={String(taxRateBps)}
                             onValueChange={(value) =>
                               setTaxRateBps(Number(value))
                             }
                           >
-                            <SelectTrigger className={MENU_SELECT_TRIGGER_CLASS}>
+                            <SelectTrigger
+                              className={formSelectTriggerClassName}
+                            >
                               <SelectValue />
                             </SelectTrigger>
                             <SelectContent>
@@ -663,15 +653,17 @@ export function MenuCatalog({
                               ))}
                             </SelectContent>
                           </Select>
-                        </MenuFormField>
-                        <MenuFormField label="Estación">
+                        </ModalFormField>
+                        <ModalFormField label="Estación">
                           <Select
                             value={station}
                             onValueChange={(value) =>
                               setStation(value as PreparationStation)
                             }
                           >
-                            <SelectTrigger className={MENU_SELECT_TRIGGER_CLASS}>
+                            <SelectTrigger
+                              className={formSelectTriggerClassName}
+                            >
                               <SelectValue />
                             </SelectTrigger>
                             <SelectContent>
@@ -685,18 +677,18 @@ export function MenuCatalog({
                               ))}
                             </SelectContent>
                           </Select>
-                        </MenuFormField>
-                        <MenuFormField label="SKU" htmlFor="product-sku">
+                        </ModalFormField>
+                        <ModalFormField label="SKU" htmlFor="product-sku">
                           <Input
                             id="product-sku"
                             value={sku}
                             onChange={(event) => setSku(event.target.value)}
                             placeholder="Opcional"
                           />
-                        </MenuFormField>
-                      </div>
+                        </ModalFormField>
+                      </ModalFormRow>
 
-                      <MenuFormField
+                      <ModalFormField
                         label="Descripción"
                         htmlFor="product-description"
                       >
@@ -711,61 +703,24 @@ export function MenuCatalog({
                           rows={3}
                           className={MENU_TEXTAREA_CLASS}
                         />
-                      </MenuFormField>
+                      </ModalFormField>
 
-                      <div className="space-y-2 border-t border-border/60 pt-4">
-                        <div className="flex items-center justify-between gap-2">
-                          <Label className="text-xs font-normal text-muted-foreground">
-                            Alérgenos
-                          </Label>
-                          {selectedAllergens.length > 0 ? (
-                            <span className="text-xs text-muted-foreground">
-                              {selectedAllergens.length}
-                            </span>
-                          ) : null}
-                        </div>
-                        <ul
-                          className="max-h-36 space-y-0.5 overflow-y-auto pr-1 sm:columns-2 sm:gap-x-4"
-                        >
-                          {MENU_ALLERGENS.map((allergen) => {
-                            const checked = selectedAllergens.includes(
-                              allergen.id,
-                            );
-                            return (
-                              <li
-                                key={allergen.id}
-                                className="break-inside-avoid py-0.5"
-                              >
-                                <label
-                                  className="flex cursor-pointer items-center gap-2 text-sm leading-snug"
-                                >
-                                  <input
-                                    type="checkbox"
-                                    className="size-3.5 shrink-0 rounded border-border"
-                                    checked={checked}
-                                    disabled={pending}
-                                    onChange={() => {
-                                      setSelectedAllergens((current) =>
-                                        checked
-                                          ? current.filter(
-                                              (id) => id !== allergen.id,
-                                            )
-                                          : [...current, allergen.id],
-                                      );
-                                    }}
-                                  />
-                                  <span className="text-foreground/90">
-                                    {allergen.label}
-                                  </span>
-                                </label>
-                              </li>
-                            );
-                          })}
-                        </ul>
-                      </div>
+                      <ModalFormField
+                        label={
+                          selectedAllergens.length > 0
+                            ? `Alérgenos (${selectedAllergens.length})`
+                            : "Alérgenos"
+                        }
+                      >
+                        <AllergenPicker
+                          selected={selectedAllergens}
+                          onChange={setSelectedAllergens}
+                          disabled={pending}
+                        />
+                      </ModalFormField>
 
                       {editingProduct ? (
-                        <div className="flex items-center justify-between gap-3 border-t border-border/60 pt-4">
+                        <div className="flex items-center justify-between gap-3 pt-2">
                           <Label
                             htmlFor="product-visible"
                             className="text-xs font-normal text-muted-foreground"
@@ -780,11 +735,10 @@ export function MenuCatalog({
                           />
                         </div>
                       ) : null}
-                    </div>
+                      </ModalForm>
+                    </FormDialogBody>
                   )}
-                  <DialogFooter
-                    className="m-0 shrink-0 flex-row items-center gap-2 rounded-none border-t border-border/60 bg-transparent px-5 py-3"
-                  >
+                  <FormDialogFooter>
                     {editingProduct ? (
                       <Button
                         type="button"
@@ -821,13 +775,13 @@ export function MenuCatalog({
                     >
                       {editingProduct ? "Guardar" : "Agregar"}
                     </Button>
-                  </DialogFooter>
-                </DialogContent>
+                  </FormDialogFooter>
+                </FormDialogContent>
               </Dialog>
             </>
-          ) : null}
-        </div>
-      </PageHeaderActions>
+          </div>
+        </PageHeaderActions>
+      ) : null}
 
       <SoftSection title="Categorías">
         {categories.length === 0 ? (
@@ -841,13 +795,33 @@ export function MenuCatalog({
               const count = snapshot.products.filter(
                 (p) => p.categoryId === category.id,
               ).length;
+              const canJump = count > 0;
               return (
                 <div
                   key={category.id}
+                  role={canJump ? "button" : undefined}
+                  tabIndex={canJump ? 0 : undefined}
                   className={cn(
-                    "relative flex min-h-[108px] flex-col items-start justify-between rounded-[20px] p-4",
+                    "relative flex min-h-[108px] flex-col items-start justify-between rounded-[20px] p-4 text-left",
                     cosyPastel(index),
+                    canJump &&
+                      "cursor-pointer transition-[filter] hover:brightness-[0.98] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring",
                   )}
+                  onClick={
+                    canJump
+                      ? () => scrollToMenuCategory(category.id)
+                      : undefined
+                  }
+                  onKeyDown={
+                    canJump
+                      ? (event) => {
+                          if (event.key === "Enter" || event.key === " ") {
+                            event.preventDefault();
+                            scrollToMenuCategory(category.id);
+                          }
+                        }
+                      : undefined
+                  }
                 >
                   {canManage ? (
                     <Button
@@ -857,7 +831,10 @@ export function MenuCatalog({
                       className="absolute top-2 right-2 h-7 w-7 p-0 opacity-70 hover:opacity-100"
                       aria-label={`Eliminar categoría ${category.name}`}
                       disabled={pending}
-                      onClick={() => deleteCategory(category)}
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        deleteCategory(category);
+                      }}
                     >
                       <Trash2 className="size-3.5" />
                     </Button>
@@ -885,7 +862,12 @@ export function MenuCatalog({
         );
         if (products.length === 0) return null;
         return (
-          <SoftSection key={category.id} title={category.name}>
+          <SoftSection
+            key={category.id}
+            id={menuCategorySectionId(category.id)}
+            className="scroll-mt-24"
+            title={category.name}
+          >
             {renderProductCards(products)}
           </SoftSection>
         );

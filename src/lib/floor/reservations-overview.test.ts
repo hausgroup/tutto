@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { buildReservationOverview } from "@/lib/floor/reservations-overview";
+import {
+  addDaysToYmd,
+  buildReservationOverview,
+  ymdInRestaurantZone,
+} from "@/lib/floor/reservations-overview";
 import type { FloorSnapshot } from "@/lib/floor/types";
 
 const baseTable = {
@@ -59,5 +63,14 @@ describe("buildReservationOverview", () => {
     expect(items).toHaveLength(1);
     expect(items[0]?.tables).toHaveLength(2);
     expect(items[0]?.totalCapacity).toBe(8);
+  });
+});
+
+describe("addDaysToYmd", () => {
+  it("advances one calendar day in restaurant TZ", () => {
+    const today = ymdInRestaurantZone(new Date("2026-03-12T15:00:00-05:00"));
+    expect(addDaysToYmd(today, 1)).toBe(
+      ymdInRestaurantZone(new Date("2026-03-13T15:00:00-05:00")),
+    );
   });
 });

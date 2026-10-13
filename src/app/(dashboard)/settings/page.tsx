@@ -12,6 +12,7 @@ import { Button } from "@/components/ui/button";
 import { resolveAuthContext } from "@/lib/auth/resolve-context";
 import { canUseDemoExperience, isSupabaseConfigured } from "@/lib/env";
 import { CheckCircle2, Circle, ExternalLink } from "lucide-react";
+import { SettingsHeaderActions } from "@/components/settings/settings-header-actions";
 
 export const metadata: Metadata = {
   title: "Configuración",
@@ -56,6 +57,7 @@ export default async function SettingsPage() {
 
   return (
     <div className="space-y-6">
+      <SettingsHeaderActions />
       {canUseDemoExperience() ? (
         <Alert>
           <AlertTitle>Modo demo activo</AlertTitle>

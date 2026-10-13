@@ -3,13 +3,18 @@
 import { useEffect, useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { Button } from "@/components/arc/button/button";
-import {
-  Dialog,
-  DialogContent,
-} from "@/components/arc/dialog/dialog";
-import dialogStyles from "@/components/arc/dialog/dialog.module.css";
 import { TableReservationFormFields } from "@/components/floor/table-reservation-form-fields";
+import { Button } from "@/components/ui/button";
+import { Dialog } from "@/components/ui/dialog";
+import {
+  FormDialogBody,
+  FormDialogContent,
+  FormDialogFooter,
+  FormDialogHeader,
+  FormDialogTitle,
+} from "@/components/ui/form-dialog";
+import { isSoftDatePickerPanelTarget } from "@/components/ui/date-picker";
+import { isSoftTimePickerPanelTarget } from "@/components/ui/time-picker";
 import { reserveTablesFromPosAction } from "@/lib/orders/actions";
 import {
   defaultReservationDateTime,
@@ -23,7 +28,6 @@ import {
   patchCachedFloorTablesReservations,
 } from "@/lib/floor/client-cache";
 import { clearCachedPosBoot } from "@/lib/pos/client-cache";
-import { isSoftDatePickerPanelTarget } from "@/components/ui/date-picker";
 
 function keepPortaledDatePicker(event: {
   preventDefault: () => void;
@@ -32,7 +36,10 @@ function keepPortaledDatePicker(event: {
 }) {
   const target =
     event.detail?.originalEvent?.target ?? event.target;
-  if (isSoftDatePickerPanelTarget(target)) {
+  if (
+    isSoftDatePickerPanelTarget(target) ||
+    isSoftTimePickerPanelTarget(target)
+  ) {
     event.preventDefault();
   }
 }
@@ -191,57 +198,60 @@ export function TableReservationDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent
-        title={title}
-        titleClassName={dialogStyles.titleHeading}
+      <FormDialogContent
+        className="overflow-visible sm:max-w-md"
         onPointerDownOutside={keepPortaledDatePicker}
         onInteractOutside={keepPortaledDatePicker}
       >
-        <div className="mb-4 flex flex-wrap gap-1.5">
-          {tableLabels.map((label) => (
-            <span
-              key={label}
-              className="rounded-full border border-[var(--border)] bg-[var(--surface-muted)] px-2.5 py-0.5 text-xs font-medium"
-            >
-              Mesa {label}
-            </span>
-          ))}
-        </div>
-        <TableReservationFormFields
-          idPrefix="salon-reserve"
-          guestName={guestName}
-          onGuestNameChange={setGuestName}
-          partySize={partySize}
-          onPartySizeChange={setPartySize}
-          occasion={occasion}
-          onOccasionChange={setOccasion}
-          dateYmd={dateYmd}
-          onDateYmdChange={setDateYmd}
-          timeHm={timeHm}
-          onTimeHmChange={setTimeHm}
-          disabled={pending}
-        />
-        <div
-          className="mt-6 flex flex-wrap justify-end gap-2 border-t border-[var(--border)] pt-5"
-        >
-            <Button
-              type="button"
-              variant="secondary"
-              disabled={pending}
-              onClick={() => onOpenChange(false)}
-            >
-              Cancelar
-            </Button>
-            <Button
-              type="button"
-              variant="primary"
-              loading={pending}
-              onClick={submitReserve}
-            >
-              {activeReservation ? "Guardar cambios" : "Confirmar reserva"}
-            </Button>
-        </div>
-      </DialogContent>
+        <FormDialogHeader>
+          <FormDialogTitle>{title}</FormDialogTitle>
+        </FormDialogHeader>
+        <FormDialogBody className="overflow-visible">
+          <div className="mb-4 flex flex-wrap gap-1.5">
+            {tableLabels.map((label) => (
+              <span
+                key={label}
+                className="rounded-full border border-border bg-muted px-2.5 py-0.5 text-xs font-medium"
+              >
+                Mesa {label}
+              </span>
+            ))}
+          </div>
+          <TableReservationFormFields
+            idPrefix="salon-reserve"
+            guestName={guestName}
+            onGuestNameChange={setGuestName}
+            partySize={partySize}
+            onPartySizeChange={setPartySize}
+            occasion={occasion}
+            onOccasionChange={setOccasion}
+            dateYmd={dateYmd}
+            onDateYmdChange={setDateYmd}
+            timeHm={timeHm}
+            onTimeHmChange={setTimeHm}
+            disabled={pending}
+          />
+        </FormDialogBody>
+        <FormDialogFooter>
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            disabled={pending}
+            onClick={() => onOpenChange(false)}
+          >
+            Cancelar
+          </Button>
+          <Button
+            type="button"
+            size="sm"
+            disabled={pending}
+            onClick={submitReserve}
+          >
+            {activeReservation ? "Guardar cambios" : "Confirmar reserva"}
+          </Button>
+        </FormDialogFooter>
+      </FormDialogContent>
     </Dialog>
   );
 }

@@ -13,16 +13,20 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Dialog, DialogTrigger } from "@/components/ui/dialog";
 import {
-  Dialog,
-  DialogContent,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from "@/components/ui/dialog";
+  FormDialogBody,
+  FormDialogContent,
+  FormDialogFooter,
+  FormDialogHeader,
+  FormDialogTitle,
+  formSelectTriggerClassName,
+} from "@/components/ui/form-dialog";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
+import {
+  ModalForm,
+  ModalFormField,
+} from "@/components/ui/modal-form-grid";
 import {
   Select,
   SelectContent,
@@ -55,59 +59,59 @@ export function StaffPanel({
   return (
     <div className="space-y-6">
       <PageHeaderActions>
-        <Dialog open={inviteOpen} onOpenChange={setInviteOpen}>
-          <DialogTrigger asChild>
-            <Button size="sm">
-              <Plus className="size-4" />
-              Invitar
-            </Button>
-          </DialogTrigger>
-          <DialogContent>
-            <DialogHeader>
-              <DialogTitle>Invitar personal</DialogTitle>
-            </DialogHeader>
-            <div className="grid gap-3 py-2">
-              <div className="space-y-2">
-                <Label htmlFor="staff-name">Nombre</Label>
-                <Input
-                  id="staff-name"
-                  value={fullName}
-                  onChange={(e) => setFullName(e.target.value)}
-                  placeholder="Ana Pérez"
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="staff-email">Correo</Label>
-                <Input
-                  id="staff-email"
-                  type="email"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  placeholder="ana@restaurante.com"
-                />
-              </div>
-              <div className="space-y-2">
-                <Label>Rol</Label>
-                <Select
-                  value={roleSlug}
-                  onValueChange={(value) =>
-                    setRoleSlug(value as "admin" | "staff")
-                  }
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {snapshot.roles.map((role) => (
-                      <SelectItem key={role.id} value={role.slug}>
-                        {role.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-            <DialogFooter>
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          <Dialog open={inviteOpen} onOpenChange={setInviteOpen}>
+            <DialogTrigger asChild>
+              <Button variant="outline" size="sm">
+                <Plus className="size-4" />
+                Invitar
+              </Button>
+            </DialogTrigger>
+          <FormDialogContent>
+            <FormDialogHeader>
+              <FormDialogTitle>Invitar personal</FormDialogTitle>
+            </FormDialogHeader>
+            <FormDialogBody>
+              <ModalForm>
+                <ModalFormField label="Nombre" htmlFor="staff-name">
+                  <Input
+                    id="staff-name"
+                    value={fullName}
+                    onChange={(e) => setFullName(e.target.value)}
+                    placeholder="Ana Pérez"
+                  />
+                </ModalFormField>
+                <ModalFormField label="Correo" htmlFor="staff-email">
+                  <Input
+                    id="staff-email"
+                    type="email"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    placeholder="ana@restaurante.com"
+                  />
+                </ModalFormField>
+                <ModalFormField label="Rol">
+                  <Select
+                    value={roleSlug}
+                    onValueChange={(value) =>
+                      setRoleSlug(value as "admin" | "staff")
+                    }
+                  >
+                    <SelectTrigger className={formSelectTriggerClassName}>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {snapshot.roles.map((role) => (
+                        <SelectItem key={role.id} value={role.slug}>
+                          {role.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </ModalFormField>
+              </ModalForm>
+            </FormDialogBody>
+            <FormDialogFooter>
               <Button
                 disabled={pending || !email.trim() || !fullName.trim()}
                 onClick={() =>
@@ -132,9 +136,10 @@ export function StaffPanel({
               >
                 Guardar
               </Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
+            </FormDialogFooter>
+          </FormDialogContent>
+          </Dialog>
+        </div>
       </PageHeaderActions>
 
       <p className="text-sm text-muted-foreground">

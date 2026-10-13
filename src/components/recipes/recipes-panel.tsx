@@ -1,24 +1,16 @@
 "use client";
 
-import Link from "next/link";
 import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
+import { Trash2 } from "lucide-react";
+import { RecipeEditorDialog } from "@/components/recipes/recipe-editor-dialog";
 import {
-  AlertTriangle,
-  ChefHat,
-  ClipboardList,
-  Pencil,
-  Plus,
-  Trash2,
-  UtensilsCrossed,
-  Warehouse,
-} from "lucide-react";
-import type { Product } from "@/lib/catalog/types";
-import {
-  deleteRecipeAction,
-  saveRecipeAction,
-} from "@/lib/inventory/actions";
+  compareProductsByName,
+  groupByProductCategory,
+} from "@/lib/catalog/products-by-category";
+import type { Product, ProductCategory } from "@/lib/catalog/types";
+import { deleteRecipeAction } from "@/lib/inventory/actions";
 import {
   foodCostPercent,
   grossMarginPercent,
@@ -26,263 +18,16 @@ import {
 } from "@/lib/inventory/recipe-cost";
 import type { Ingredient, InventorySnapshot, Recipe } from "@/lib/inventory/types";
 import { formatCurrency } from "@/lib/utils/money";
+import { Button as ArcButton } from "@/components/arc/button/button";
 import { PageHeaderActions } from "@/components/layout/page-header-actions";
 import { Button } from "@/components/ui/button";
-import {
-  Dialog,
-  DialogContent,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { SoftStat } from "@/components/ui/soft";
+import { PageStat, PageStatGrid } from "@/components/ui/page-stat";
+import { SoftSection } from "@/components/ui/soft";
 
 const RECIPE_CARD_GRID =
   "grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-4";
 
-type LineDraft = {
-  ingredientId: string;
-  quantity: string;
-  wastagePercent: string;
-};
-
-function emptyLine(ingredients: Ingredient[]): LineDraft {
-  return {
-    ingredientId: ingredients[0]?.id ?? "",
-    quantity: "1",
-    wastagePercent: "0",
-  };
-}
-
-function RecipeEditorDialog({
-  restaurantId,
-  products,
-  ingredients,
-  recipe,
-  productIdPreset,
-  canManage,
-}: {
-  restaurantId: string;
-  products: Product[];
-  ingredients: Ingredient[];
-  recipe?: Recipe;
-  productIdPreset?: string;
-  canManage: boolean;
-}) {
-  const router = useRouter();
-  const [open, setOpen] = useState(false);
-  const [productId, setProductId] = useState(
-    recipe?.productId ?? productIdPreset ?? products[0]?.id ?? "",
-  );
-  const [lines, setLines] = useState<LineDraft[]>(
-    recipe?.lines.map((line) => ({
-      ingredientId: line.ingredientId,
-      quantity: String(line.quantity),
-      wastagePercent: String(line.wastageBps / 100),
-    })) ?? [emptyLine(ingredients)],
-  );
-  const [pending, startTransition] = useTransition();
-
-  function reset() {
-    setProductId(recipe?.productId ?? productIdPreset ?? products[0]?.id ?? "");
-    setLines(
-      recipe?.lines.map((line) => ({
-        ingredientId: line.ingredientId,
-        quantity: String(line.quantity),
-        wastagePercent: String(line.wastageBps / 100),
-      })) ?? [emptyLine(ingredients)],
-    );
-  }
-
-  function save() {
-    const product = products.find((p) => p.id === productId);
-    if (!product) {
-      toast.error("Elige un producto del menú");
-      return;
-    }
-    const parsedLines = lines
-      .filter((l) => l.ingredientId && Number(l.quantity) > 0)
-      .map((l) => ({
-        ingredientId: l.ingredientId,
-        quantity: Number(l.quantity),
-        wastageBps: Math.round(Number(l.wastagePercent || "0") * 100),
-      }));
-    if (parsedLines.length === 0) {
-      toast.error("Agrega al menos un ingrediente");
-      return;
-    }
-
-    startTransition(async () => {
-      const result = await saveRecipeAction({
-        restaurantId,
-        productId,
-        name: product.name,
-        lines: parsedLines,
-      });
-      if (result.error) toast.error(result.error);
-      else {
-        toast.success(recipe ? "Receta actualizada" : "Receta creada");
-        setOpen(false);
-        router.refresh();
-      }
-    });
-  }
-
-  if (!canManage) return null;
-
-  return (
-    <Dialog
-      open={open}
-      onOpenChange={(next) => {
-        setOpen(next);
-        if (next) reset();
-      }}
-    >
-      <DialogTrigger asChild>
-        {recipe || productIdPreset ? (
-          <Button variant="outline" size="sm">
-            {recipe ? (
-              <>
-                <Pencil className="size-4" />
-                Editar
-              </>
-            ) : (
-              <>
-                <Plus className="size-4" />
-                Crear receta
-              </>
-            )}
-          </Button>
-        ) : (
-          <Button variant="outline" size="sm">
-            <Plus className="size-4" />
-            Nueva receta
-          </Button>
-        )}
-      </DialogTrigger>
-      <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-lg">
-        <DialogHeader>
-          <DialogTitle>
-            {recipe ? "Editar receta" : "Nueva receta"}
-          </DialogTitle>
-        </DialogHeader>
-        <div className="space-y-4 py-1">
-          <div className="space-y-2">
-            <Label>Producto del menú</Label>
-            <Select
-              value={productId}
-              onValueChange={setProductId}
-              disabled={Boolean(recipe)}
-            >
-              <SelectTrigger>
-                <SelectValue placeholder="Producto" />
-              </SelectTrigger>
-              <SelectContent>
-                {products.map((p) => (
-                  <SelectItem key={p.id} value={p.id}>
-                    {p.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-
-          <div className="space-y-2">
-            <Label>Ingredientes</Label>
-            {lines.map((line, index) => (
-              <div
-                key={index}
-                className="grid grid-cols-[1fr_80px_72px_36px] gap-2 items-end"
-              >
-                <Select
-                  value={line.ingredientId}
-                  onValueChange={(value) => {
-                    const next = [...lines];
-                    next[index] = { ...line, ingredientId: value };
-                    setLines(next);
-                  }}
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {ingredients
-                      .filter((i) => i.isActive)
-                      .map((i) => (
-                        <SelectItem key={i.id} value={i.id}>
-                          {i.name}
-                        </SelectItem>
-                      ))}
-                  </SelectContent>
-                </Select>
-                <Input
-                  type="number"
-                  step="0.001"
-                  min={0}
-                  placeholder="Cant."
-                  value={line.quantity}
-                  onChange={(e) => {
-                    const next = [...lines];
-                    next[index] = { ...line, quantity: e.target.value };
-                    setLines(next);
-                  }}
-                />
-                <Input
-                  type="number"
-                  step="0.1"
-                  min={0}
-                  placeholder="% merma"
-                  value={line.wastagePercent}
-                  onChange={(e) => {
-                    const next = [...lines];
-                    next[index] = { ...line, wastagePercent: e.target.value };
-                    setLines(next);
-                  }}
-                />
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon"
-                  disabled={lines.length <= 1}
-                  onClick={() =>
-                    setLines(lines.filter((_, i) => i !== index))
-                  }
-                >
-                  <Trash2 className="size-4" />
-                </Button>
-              </div>
-            ))}
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={() => setLines([...lines, emptyLine(ingredients)])}
-            >
-              <Plus className="size-4" />
-              Línea
-            </Button>
-          </div>
-        </div>
-        <DialogFooter>
-          <Button onClick={save} disabled={pending || ingredients.length === 0}>
-            Guardar receta
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
-  );
-}
+type RecipesTab = "recipes" | "pending";
 
 function ingredientPreview(
   recipe: Recipe,
@@ -300,15 +45,24 @@ function ingredientPreview(
   return { shown, rest };
 }
 
+function recipeProductName(
+  recipe: Recipe,
+  products: Product[],
+): string {
+  return products.find((p) => p.id === recipe.productId)?.name ?? recipe.name;
+}
+
 export function RecipesPanel({
   restaurantId,
   inventory,
   products,
+  categories,
   canManage,
 }: {
   restaurantId: string;
   inventory: InventorySnapshot;
   products: Product[];
+  categories: ProductCategory[];
   canManage: boolean;
 }) {
   const router = useRouter();
@@ -325,6 +79,38 @@ export function RecipesPanel({
   const withoutRecipe = useMemo(
     () => menuProducts.filter((p) => !recipeByProduct.has(p.id)),
     [menuProducts, recipeByProduct],
+  );
+
+  const productById = useMemo(
+    () => new Map(products.map((p) => [p.id, p])),
+    [products],
+  );
+
+  const recipeGroups = useMemo(
+    () =>
+      groupByProductCategory(
+        inventory.recipes,
+        categories,
+        (recipe) => productById.get(recipe.productId)?.categoryId ?? null,
+        (a, b) =>
+          recipeProductName(a, products).localeCompare(
+            recipeProductName(b, products),
+            "es",
+            { sensitivity: "base" },
+          ),
+      ),
+    [inventory.recipes, categories, productById, products],
+  );
+
+  const pendingGroups = useMemo(
+    () =>
+      groupByProductCategory(
+        withoutRecipe,
+        categories,
+        (product) => product.categoryId,
+        compareProductsByName,
+      ),
+    [withoutRecipe, categories],
   );
 
   const avgFoodCostPercent = useMemo(() => {
@@ -350,49 +136,35 @@ export function RecipesPanel({
     });
   }
 
-  const defaultTab =
+  const defaultTab: RecipesTab =
     inventory.recipes.length === 0 && withoutRecipe.length > 0
       ? "pending"
       : "recipes";
+  const [tab, setTab] = useState<RecipesTab>(defaultTab);
 
   return (
     <div className="w-full space-y-8">
-      <PageHeaderActions>
-        <div className="flex flex-wrap items-center justify-end gap-2">
-          <Button asChild variant="outline" size="sm">
-            <Link href="/products">
-              <UtensilsCrossed className="size-4" />
-              Menú
-            </Link>
-          </Button>
-          <Button asChild variant="outline" size="sm">
-            <Link href="/inventory">
-              <Warehouse className="size-4" />
-              Inventario
-            </Link>
-          </Button>
-          {canManage ? (
+      {canManage ? (
+        <PageHeaderActions>
+          <div className="flex flex-wrap items-center justify-end gap-2">
             <RecipeEditorDialog
               restaurantId={restaurantId}
               products={menuProducts}
+              categories={categories}
               ingredients={inventory.ingredients}
               canManage={canManage}
             />
-          ) : null}
-        </div>
-      </PageHeaderActions>
+          </div>
+        </PageHeaderActions>
+      ) : null}
 
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-        <SoftStat
-          index={0}
-          icon={ClipboardList}
+      <PageStatGrid columns={3}>
+        <PageStat
           label="Fichas técnicas"
           value={inventory.recipes.length}
           hint={`${menuProducts.length} productos activos en menú`}
         />
-        <SoftStat
-          index={3}
-          icon={AlertTriangle}
+        <PageStat
           label="Sin receta"
           value={withoutRecipe.length}
           hint={
@@ -401,50 +173,68 @@ export function RecipesPanel({
               : "Todos los ítems activos tienen ficha"
           }
         />
-        <SoftStat
-          index={1}
-          icon={ChefHat}
+        <PageStat
           label="Food cost medio"
-          value={
-            avgFoodCostPercent != null ? `${avgFoodCostPercent}%` : "—"
-          }
+          value={avgFoodCostPercent != null ? `${avgFoodCostPercent}%` : "—"}
           hint={
             avgFoodCostPercent != null
               ? "Promedio sobre ítems con precio"
               : "Agrega precio en el menú para calcular"
           }
         />
-      </div>
+      </PageStatGrid>
 
-      <Tabs defaultValue={defaultTab} className="w-full">
-        <TabsList className="w-full max-w-none justify-start sm:w-auto">
-          <TabsTrigger value="recipes">
+      <div className="flex w-full flex-col gap-5">
+        <div
+          className="flex flex-wrap gap-2"
+          role="tablist"
+          aria-label="Vista de recetas"
+        >
+          <ArcButton
+            type="button"
+            role="tab"
+            aria-selected={tab === "recipes"}
+            variant={tab === "recipes" ? "primary" : "secondary"}
+            size="sm"
+            onClick={() => setTab("recipes")}
+          >
             Fichas técnicas
             {inventory.recipes.length > 0 ? (
-              <span className="ml-1.5 tabular-nums text-muted-foreground">
+              <span className="ml-1.5 tabular-nums opacity-70">
                 ({inventory.recipes.length})
               </span>
             ) : null}
-          </TabsTrigger>
-          <TabsTrigger value="pending">
+          </ArcButton>
+          <ArcButton
+            type="button"
+            role="tab"
+            aria-selected={tab === "pending"}
+            variant={tab === "pending" ? "primary" : "secondary"}
+            size="sm"
+            onClick={() => setTab("pending")}
+          >
             Sin receta
             {withoutRecipe.length > 0 ? (
-              <span className="ml-1.5 tabular-nums text-muted-foreground">
+              <span className="ml-1.5 tabular-nums opacity-70">
                 ({withoutRecipe.length})
               </span>
             ) : null}
-          </TabsTrigger>
-        </TabsList>
+          </ArcButton>
+        </div>
 
-        <TabsContent value="recipes" className="mt-4 w-full">
-          {inventory.recipes.length === 0 ? (
-            <p className="text-sm text-muted-foreground">
-              Aún no hay recetas. Crea una para vincular ventas con inventario.
-            </p>
-          ) : (
-            <div className={RECIPE_CARD_GRID}>
-              {inventory.recipes.map((recipe) => {
-                const product = products.find((p) => p.id === recipe.productId);
+        <div role="tabpanel" className="w-full">
+          {tab === "recipes" ? (
+            inventory.recipes.length === 0 ? (
+              <p className="text-sm text-muted-foreground">
+                Aún no hay recetas. Crea una para vincular ventas con inventario.
+              </p>
+            ) : (
+              <div className="space-y-8">
+                {recipeGroups.map((group) => (
+                  <SoftSection key={group.categoryId ?? "uncategorized"} title={group.title}>
+                    <div className={RECIPE_CARD_GRID}>
+              {group.items.map((recipe) => {
+                const product = productById.get(recipe.productId);
                 const cost = recipeCostMinor(recipe, inventory.ingredients);
                 const price = product?.priceMinor ?? 0;
                 const fc = foodCostPercent(cost, price);
@@ -470,6 +260,7 @@ export function RecipesPanel({
                             <RecipeEditorDialog
                               restaurantId={restaurantId}
                               products={menuProducts}
+                              categories={categories}
                               ingredients={inventory.ingredients}
                               recipe={recipe}
                               canManage={canManage}
@@ -515,18 +306,24 @@ export function RecipesPanel({
                   </div>
                 );
               })}
-            </div>
-          )}
-        </TabsContent>
+                    </div>
+                  </SoftSection>
+                ))}
+              </div>
+            )
+          ) : null}
 
-        <TabsContent value="pending" className="mt-4 w-full">
-          {withoutRecipe.length === 0 ? (
-            <p className="text-sm text-muted-foreground">
-              Todos los productos activos del menú tienen ficha técnica.
-            </p>
-          ) : (
-            <div className={RECIPE_CARD_GRID}>
-              {withoutRecipe.map((product) => (
+          {tab === "pending" ? (
+            withoutRecipe.length === 0 ? (
+              <p className="text-sm text-muted-foreground">
+                Todos los productos activos del menú tienen ficha técnica.
+              </p>
+            ) : (
+              <div className="space-y-8">
+                {pendingGroups.map((group) => (
+                  <SoftSection key={group.categoryId ?? "uncategorized"} title={group.title}>
+                    <div className={RECIPE_CARD_GRID}>
+              {group.items.map((product) => (
                 <div
                   key={product.id}
                   className="flex min-h-[150px] flex-col justify-between rounded-[20px] bg-muted/50 p-4 text-card-foreground ring-1 ring-border"
@@ -544,11 +341,12 @@ export function RecipesPanel({
                   </div>
                   {canManage ? (
                     <div
-                      className="-mx-4 -mb-4 mt-3 flex items-center justify-center border-t border-border/60 px-4 py-3"
+                      className="-mx-4 -mb-4 mt-3 overflow-hidden rounded-b-[20px] border-t border-border/60"
                     >
                       <RecipeEditorDialog
                         restaurantId={restaurantId}
                         products={menuProducts}
+                        categories={categories}
                         ingredients={inventory.ingredients}
                         productIdPreset={product.id}
                         canManage={canManage}
@@ -557,10 +355,14 @@ export function RecipesPanel({
                   ) : null}
                 </div>
               ))}
-            </div>
-          )}
-        </TabsContent>
-      </Tabs>
+                    </div>
+                  </SoftSection>
+                ))}
+              </div>
+            )
+          ) : null}
+        </div>
+      </div>
     </div>
   );
 }

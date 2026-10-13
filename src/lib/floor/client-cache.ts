@@ -126,7 +126,7 @@ export function warmFloorBoot(options?: {
   force?: boolean;
 }): Promise<FloorBootstrap> {
   if (!options?.force && cached) return Promise.resolve(cached);
-  if (pending) return pending;
+  if (pending && !options?.force) return pending;
 
   pending = bootstrapFloorAction()
     .then((result) => {
@@ -139,4 +139,15 @@ export function warmFloorBoot(options?: {
     });
 
   return pending;
+}
+
+/** Refresh salon data without clearing the cached snapshot shown in the UI. */
+export function refreshFloorBootInBackground(
+  onUpdated?: (boot: FloorBootstrap) => void,
+): void {
+  void warmFloorBoot({ force: true })
+    .then((boot) => {
+      onUpdated?.(boot);
+    })
+    .catch(() => {});
 }

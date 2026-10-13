@@ -25,6 +25,7 @@ import {
   type GuestSlot,
 } from "@/lib/orders/split-bill";
 import { formatCurrency } from "@/lib/utils/money";
+import { Button as ArcButton } from "@/components/arc/button/button";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -264,32 +265,32 @@ export function PosCheckoutDialog({
           </div>
         ) : (
           <>
-            <div className="flex gap-2 border-b border-border px-5 py-3">
-              <button
+            <div
+              className="flex flex-wrap gap-2 px-5 py-3"
+              role="tablist"
+              aria-label="Tipo de cuenta"
+            >
+              <ArcButton
                 type="button"
+                role="tab"
+                aria-selected={checkoutTab === "full"}
+                variant={checkoutTab === "full" ? "primary" : "secondary"}
+                size="sm"
                 onClick={() => setCheckoutTab("full")}
-                className={cn(
-                  "flex-1 rounded-full py-2 text-sm font-medium transition-colors",
-                  checkoutTab === "full"
-                    ? "bg-foreground text-background"
-                    : "bg-muted text-muted-foreground",
-                )}
               >
                 Cuenta completa
-              </button>
-              <button
+              </ArcButton>
+              <ArcButton
                 type="button"
+                role="tab"
+                aria-selected={checkoutTab === "split"}
+                variant={checkoutTab === "split" ? "primary" : "secondary"}
+                size="sm"
                 onClick={() => setCheckoutTab("split")}
-                className={cn(
-                  "flex flex-1 items-center justify-center gap-1.5 rounded-full py-2 text-sm font-medium transition-colors",
-                  checkoutTab === "split"
-                    ? "bg-foreground text-background"
-                    : "bg-muted text-muted-foreground",
-                )}
               >
                 <Users className="size-4" aria-hidden />
                 Dividir
-              </button>
+              </ArcButton>
             </div>
 
             <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-5 py-4">

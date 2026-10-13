@@ -1,5 +1,7 @@
 "use client";
 
+import type { StationTicketPdfPayload } from "@/lib/printing/build-station-ticket-pdfs";
+
 export type StationPdfJob = {
   station: "kitchen" | "bar";
   pdfBase64: string;
@@ -58,11 +60,39 @@ function printBlob(blob: Blob, title: string): Promise<void> {
   });
 }
 
-/** In-page print dialogs only (no new tabs): one per station, or a single combined PDF. */
+function bytesToBlob(bytes: Uint8Array): Blob {
+  const copy = new Uint8Array(bytes.length);
+  copy.set(bytes);
+  return new Blob([copy], { type: "application/pdf" });
+}
+
+/** Fast path: PDF bytes already built on the client (no server round-trip). */
+export async function printStationTicketPdfPayload(
+  payload: StationTicketPdfPayload,
+): Promise<void> {
+  if (payload.combinedBytes) {
+    await printBlob(bytesToBlob(payload.combinedBytes), "Ticket pedido");
+    return;
+  }
+  if (payload.stationPdfs?.length) {
+    for (const job of payload.stationPdfs) {
+      await printBlob(
+        bytesToBlob(job.bytes),
+        `Ticket ${STATION_LABEL[job.station]}`,
+      );
+    }
+  }
+}
+
+/** In-page print dialogs only (no new tabs): prefer one combined PDF when possible. */
 export async function printStationTicketPdfs(input: {
   combinedPdfBase64?: string;
   stationPdfs?: StationPdfJob[];
 }): Promise<void> {
+  if (input.combinedPdfBase64) {
+    await printBlob(base64ToBlob(input.combinedPdfBase64), "Ticket pedido");
+    return;
+  }
   if (input.stationPdfs?.length) {
     for (const job of input.stationPdfs) {
       await printBlob(
@@ -70,9 +100,5 @@ export async function printStationTicketPdfs(input: {
         `Ticket ${STATION_LABEL[job.station]}`,
       );
     }
-    return;
-  }
-  if (input.combinedPdfBase64) {
-    await printBlob(base64ToBlob(input.combinedPdfBase64), "Ticket pedido");
   }
 }

@@ -1,5 +1,4 @@
-import { PosLoadingShell } from "@/components/pos/pos-loading-shell";
-
+/** Route transition shell — POS client entry paints from warm cache immediately. */
 export default function PosLoading() {
-  return <PosLoadingShell />;
+  return null;
 }

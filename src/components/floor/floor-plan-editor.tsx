@@ -16,8 +16,9 @@ import {
 } from "@/lib/floor/actions";
 import { FloorGridView } from "@/components/floor/floor-grid-view";
 import { FloorZonePills } from "@/components/floor/floor-zone-pills";
-import { ArcLinkButton } from "@/components/arc/arc-link-button";
+import Link from "next/link";
 import { Button } from "@/components/arc/button/button";
+import { Button as HeaderButton } from "@/components/ui/button";
 import {
   Dialog,
   DialogContent,
@@ -238,16 +239,18 @@ export function FloorPlanEditor({
     <div className={cn("relative flex min-h-0 flex-1 flex-col gap-3", className)}>
       <PageHeaderActions>
         <div className="flex flex-wrap items-center justify-end gap-2">
-          <ArcLinkButton href="/floor" variant="secondary" size="sm">
-            <Eye className="size-4" />
-            Ver salón
-          </ArcLinkButton>
+          <HeaderButton asChild variant="outline" size="sm">
+            <Link href="/floor">
+              <Eye className="size-4" />
+              Ver salón
+            </Link>
+          </HeaderButton>
           <Dialog open={areaDialogOpen} onOpenChange={setAreaDialogOpen}>
             <DialogTrigger asChild>
-              <Button variant="secondary" size="sm">
+              <HeaderButton variant="outline" size="sm">
                 <Plus className="size-4" />
                 Área
-              </Button>
+              </HeaderButton>
             </DialogTrigger>
             <DialogContent title="Nueva área">
               <form
@@ -282,10 +285,10 @@ export function FloorPlanEditor({
 
           <Dialog open={tableDialogOpen} onOpenChange={setTableDialogOpen}>
             <DialogTrigger asChild>
-              <Button variant="secondary" size="sm">
+              <HeaderButton variant="outline" size="sm">
                 <Plus className="size-4" />
                 Mesa
-              </Button>
+              </HeaderButton>
             </DialogTrigger>
             <DialogContent title="Nueva mesa">
               <form
@@ -345,14 +348,14 @@ export function FloorPlanEditor({
             }}
           >
             <DialogTrigger asChild>
-              <Button
-                variant="secondary"
+              <HeaderButton
+                variant="outline"
                 size="sm"
                 disabled={!activeAreaId}
               >
                 <Pencil className="size-4" />
                 Renombrar zona
-              </Button>
+              </HeaderButton>
             </DialogTrigger>
             <DialogContent title="Renombrar zona" className="max-w-sm">
               <div className="flex flex-col gap-4">
@@ -408,11 +411,10 @@ export function FloorPlanEditor({
             </DialogContent>
           </Dialog>
 
-          <Button
-            variant="secondary"
+          <HeaderButton
+            variant="outline"
             size="sm"
             disabled={pending || !activeAreaId}
-            loading={pending}
             onClick={() =>
               runAction(
                 deleteFloorAreaAction({
@@ -430,7 +432,7 @@ export function FloorPlanEditor({
           >
             <Trash2 className="size-4" />
             Eliminar área
-          </Button>
+          </HeaderButton>
         </div>
       </PageHeaderActions>
 
