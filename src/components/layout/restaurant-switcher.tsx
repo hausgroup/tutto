@@ -1,14 +1,21 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { Check, ChevronsUpDown, Loader2 } from "lucide-react";
 import { switchRestaurantAction } from "@/lib/auth/actions";
+import {
+  useActiveRestaurantId,
+  useSetActiveRestaurantOptimistic,
+} from "@/lib/auth/active-restaurant-context";
 import type { AuthContext, RestaurantMembership } from "@/lib/auth/permissions";
 import { getActiveMembership } from "@/lib/auth/permissions";
-import { invalidateFloorClientCache } from "@/lib/floor/client-cache";
-import { invalidatePosCatalogCache } from "@/lib/pos/client-cache";
+import { prefetchPosCatalog } from "@/lib/pos/client-cache";
+import {
+  prefetchFloorBoot,
+  seedDemoFloorBoot,
+} from "@/lib/floor/client-cache";
 import { RESTAURANT_BRANDS } from "@/lib/restaurants/constants";
 import {
   DropdownMenu,
@@ -67,49 +74,58 @@ export function RestaurantSwitcher({
     [auth.memberships],
   );
 
-  const [selectedId, setSelectedId] = useState(
-    () => auth.activeRestaurantId ?? options[0]?.restaurantId ?? "",
-  );
+  const activeRestaurantId = useActiveRestaurantId();
+  const setActiveRestaurantOptimistic = useSetActiveRestaurantOptimistic();
   const [syncingId, setSyncingId] = useState<string | null>(null);
   const inFlight = useRef(false);
+  const [, startRefresh] = useTransition();
 
   useEffect(() => {
     if (auth.activeRestaurantId) {
-      setSelectedId(auth.activeRestaurantId);
+      setActiveRestaurantOptimistic(auth.activeRestaurantId);
     }
-  }, [auth.activeRestaurantId]);
+  }, [auth.activeRestaurantId, setActiveRestaurantOptimistic]);
 
   const activeMembership =
-    options.find((m) => m.restaurantId === selectedId) ?? active;
+    options.find((m) => m.restaurantId === activeRestaurantId) ?? active;
+
+  function prefetchRestaurant(restaurantId: string) {
+    seedDemoFloorBoot(restaurantId);
+    prefetchFloorBoot(restaurantId);
+    prefetchPosCatalog(restaurantId);
+  }
 
   async function select(restaurantId: string) {
-    if (restaurantId === selectedId || inFlight.current) return;
+    if (restaurantId === activeRestaurantId || inFlight.current) return;
 
-    const previousId = selectedId;
-    setSelectedId(restaurantId);
-    setSyncingId(restaurantId);
+    const previousId = activeRestaurantId;
     inFlight.current = true;
+    setSyncingId(restaurantId);
 
-    invalidateFloorClientCache();
-    invalidatePosCatalogCache();
+    setActiveRestaurantOptimistic(restaurantId);
+    prefetchRestaurant(restaurantId);
 
     const targetPath =
       pathname.startsWith("/pos/") || pathname.startsWith("/floor/editor")
         ? "/floor"
         : pathname;
 
-    router.replace(targetPath);
+    if (targetPath !== pathname) {
+      router.replace(targetPath);
+    }
 
     try {
       const result = await switchRestaurantAction({ restaurantId });
       if (result.error) {
-        setSelectedId(previousId);
+        setActiveRestaurantOptimistic(previousId);
         toast.error(result.error);
         return;
       }
-      router.refresh();
+      startRefresh(() => {
+        router.refresh();
+      });
     } catch {
-      setSelectedId(previousId);
+      setActiveRestaurantOptimistic(previousId);
       toast.error("No pudimos cambiar de restaurante.");
     } finally {
       inFlight.current = false;
@@ -126,6 +142,33 @@ export function RestaurantSwitcher({
       </div>
     );
   }
+
+  const menuItems = options.map((membership) => {
+    const isActive = membership.restaurantId === activeRestaurantId;
+    const isSyncing = syncingId === membership.restaurantId;
+    return (
+      <DropdownMenuItem
+        key={membership.restaurantId}
+        onPointerEnter={() => prefetchRestaurant(membership.restaurantId)}
+        onFocus={() => prefetchRestaurant(membership.restaurantId)}
+        onClick={() => select(membership.restaurantId)}
+      >
+        <span className="flex min-w-0 flex-1 items-center gap-2">
+          <span
+            className="flex size-7 shrink-0 items-center justify-center rounded-md bg-muted text-xs font-semibold"
+          >
+            {brandInitial(membership.restaurantName)}
+          </span>
+          <span className="truncate">{membership.restaurantName}</span>
+        </span>
+        {isSyncing ? (
+          <Loader2 className="size-4 animate-spin" />
+        ) : isActive ? (
+          <Check className="size-4 text-muted-foreground" />
+        ) : null}
+      </DropdownMenuItem>
+    );
+  });
 
   if (collapsed) {
     const name = activeMembership?.restaurantName ?? "Restaurante";
@@ -151,20 +194,7 @@ export function RestaurantSwitcher({
               </SidebarMenuButton>
             </DropdownMenuTrigger>
             <DropdownMenuContent side="right" align="start" className="min-w-44">
-              {options.map((membership) => {
-                const isActive = membership.restaurantId === selectedId;
-                return (
-                  <DropdownMenuItem
-                    key={membership.restaurantId}
-                    onClick={() => select(membership.restaurantId)}
-                  >
-                    <span className="flex-1">{membership.restaurantName}</span>
-                    {isActive ? (
-                      <Check className="size-4 text-muted-foreground" />
-                    ) : null}
-                  </DropdownMenuItem>
-                );
-              })}
+              {menuItems}
             </DropdownMenuContent>
           </DropdownMenu>
         </SidebarMenuItem>
@@ -209,32 +239,11 @@ export function RestaurantSwitcher({
           />
         </button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="start" className="w-[var(--radix-dropdown-menu-trigger-width)]">
-        {options.map((membership) => {
-          const isActive = membership.restaurantId === selectedId;
-          const isSyncing = syncingId === membership.restaurantId;
-          return (
-            <DropdownMenuItem
-              key={membership.restaurantId}
-              disabled={Boolean(syncingId)}
-              onClick={() => select(membership.restaurantId)}
-            >
-              <span className="flex min-w-0 flex-1 items-center gap-2">
-                <span
-                  className="flex size-7 shrink-0 items-center justify-center rounded-md bg-muted text-xs font-semibold"
-                >
-                  {brandInitial(membership.restaurantName)}
-                </span>
-                <span className="truncate">{membership.restaurantName}</span>
-              </span>
-              {isSyncing ? (
-                <Loader2 className="size-4 animate-spin" />
-              ) : isActive ? (
-                <Check className="size-4 text-muted-foreground" />
-              ) : null}
-            </DropdownMenuItem>
-          );
-        })}
+      <DropdownMenuContent
+        align="start"
+        className="w-[var(--radix-dropdown-menu-trigger-width)]"
+      >
+        {menuItems}
       </DropdownMenuContent>
     </DropdownMenu>
   );

@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
-import { FloorPlanEditor } from "@/components/floor/floor-plan-editor";
+import { FloorEditorClientEntry } from "@/components/floor/floor-editor-client-entry";
 import { getDefaultRestaurantId, resolveAuthContext } from "@/lib/auth/resolve-context";
 import { floorService } from "@/lib/floor/service";
 
@@ -19,15 +19,5 @@ export default async function FloorEditorPage() {
     redirect("/floor");
   }
 
-  const snapshot = await floorService.getSnapshot(auth, restaurantId);
-
-  return (
-    <div className="flex min-h-[calc(100dvh-7.5rem)] flex-col gap-3 md:min-h-[calc(100dvh-8.5rem)]">
-      <FloorPlanEditor
-        initialSnapshot={snapshot}
-        restaurantId={restaurantId}
-        className="min-h-0 flex-1"
-      />
-    </div>
-  );
+  return <FloorEditorClientEntry restaurantId={restaurantId} />;
 }

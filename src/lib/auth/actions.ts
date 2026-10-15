@@ -1,6 +1,5 @@
 "use server";
 
-import { revalidatePath } from "next/cache";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import {
@@ -54,10 +53,6 @@ const switchRestaurantSchema = z.object({
 
 export type SwitchRestaurantState = { error?: string };
 
-function revalidateOperationalRoutes() {
-  revalidatePath("/", "layout");
-}
-
 export async function switchRestaurantAction(
   input: unknown,
 ): Promise<SwitchRestaurantState> {
@@ -79,7 +74,6 @@ export async function switchRestaurantAction(
       maxAge: 60 * 60 * 24 * 365,
     });
 
-    revalidateOperationalRoutes();
     return {};
   } catch {
     return { error: "No pudimos cambiar de restaurante." };

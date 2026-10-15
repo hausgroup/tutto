@@ -8,14 +8,18 @@ import {
   type PosCatalogWarm,
 } from "@/lib/pos/actions";
 
-let catalogWarm: PosCatalogWarm | null = null;
-let catalogPending: Promise<PosCatalogWarm | null> | null = null;
+const catalogs = new Map<string, PosCatalogWarm>();
+const catalogPending = new Map<string, Promise<PosCatalogWarm | null>>();
 
 const boots = new Map<string, PosBootstrap>();
 const pendingBoots = new Map<string, Promise<PosBootstrap>>();
 
-export function getCachedPosCatalog(): PosCatalogWarm | null {
-  return catalogWarm;
+export function getCachedPosCatalog(
+  restaurantId?: string,
+): PosCatalogWarm | null {
+  if (restaurantId) return catalogs.get(restaurantId) ?? null;
+  const first = catalogs.values().next();
+  return first.done ? null : first.value;
 }
 
 export function getCachedPosBoot(tableId: string): PosBootstrap | null {
@@ -48,29 +52,49 @@ export function clearCachedPosBoot(tableId: string) {
   pendingBoots.delete(tableId);
 }
 
-export function warmPosCatalog(): Promise<PosCatalogWarm | null> {
-  if (catalogWarm) return Promise.resolve(catalogWarm);
-  if (catalogPending) return catalogPending;
+export function prefetchPosCatalog(restaurantId: string) {
+  void warmPosCatalog({ restaurantId });
+}
 
-  catalogPending = warmPosCatalogAction()
+export function warmPosCatalog(options?: {
+  restaurantId?: string;
+  force?: boolean;
+}): Promise<PosCatalogWarm | null> {
+  const restaurantId = options?.restaurantId;
+  if (restaurantId && !options?.force) {
+    const hit = catalogs.get(restaurantId);
+    if (hit) return Promise.resolve(hit);
+    const pending = catalogPending.get(restaurantId);
+    if (pending) return pending;
+  } else if (!restaurantId && catalogWarmLegacy()) {
+    return Promise.resolve(catalogWarmLegacy());
+  }
+
+  const request = warmPosCatalogAction(restaurantId)
     .then((result) => {
       if ("error" in result) return null;
-      catalogWarm = result;
+      if (result.restaurantId) {
+        catalogs.set(result.restaurantId, result);
+      }
       return result;
     })
     .catch(() => null)
     .finally(() => {
-      catalogPending = null;
+      if (restaurantId) catalogPending.delete(restaurantId);
     });
 
-  return catalogPending;
+  if (restaurantId) catalogPending.set(restaurantId, request);
+  return request;
 }
 
-/** Start loading table POS data before navigation finishes. */
+function catalogWarmLegacy(): PosCatalogWarm | null {
+  const first = catalogs.values().next();
+  return first.done ? null : first.value;
+}
+
 function floorCacheSaysReserved(tableId: string): boolean {
-  const table = getCachedFloorBoot()?.snapshot.tables.find(
-    (row) => row.id === tableId,
-  );
+  const boot = getCachedFloorBoot();
+  const table = boot?.snapshot.tables.find((row) => row.id === tableId);
   return table?.status === "reserved" && table.reservation != null;
 }
 
@@ -88,7 +112,7 @@ export function warmPosTable(tableId: string): Promise<PosBootstrap> {
   if (pending) return pending;
 
   const request = Promise.all([
-    catalogWarm ? Promise.resolve(catalogWarm) : warmPosCatalog(),
+    warmPosCatalog({ restaurantId: undefined }),
     bootstrapPosTableAction(tableId),
   ])
     .then(([catalogResult, tableResult]) => {
@@ -98,7 +122,7 @@ export function warmPosTable(tableId: string): Promise<PosBootstrap> {
       if ("error" in tableResult) {
         throw new Error(tableResult.error);
       }
-      catalogWarm = catalogResult;
+      catalogs.set(catalogResult.restaurantId, catalogResult);
       const boot: PosBootstrap = {
         ...tableResult,
         catalog: catalogResult.catalog,
@@ -118,14 +142,20 @@ export function warmPosTable(tableId: string): Promise<PosBootstrap> {
   return request;
 }
 
-export function peekCatalogSnapshot(): CatalogSnapshot | null {
-  return catalogWarm?.catalog ?? null;
+export function peekCatalogSnapshot(
+  restaurantId?: string,
+): CatalogSnapshot | null {
+  return getCachedPosCatalog(restaurantId)?.catalog ?? null;
 }
 
-/** Drop cached POS catalog so the next visit picks up menu changes. */
-export function invalidatePosCatalogCache() {
-  catalogWarm = null;
-  catalogPending = null;
+export function invalidatePosCatalogCache(restaurantId?: string) {
+  if (restaurantId) {
+    catalogs.delete(restaurantId);
+    catalogPending.delete(restaurantId);
+    return;
+  }
+  catalogs.clear();
+  catalogPending.clear();
   boots.clear();
   pendingBoots.clear();
 }

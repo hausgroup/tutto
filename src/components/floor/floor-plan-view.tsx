@@ -224,7 +224,7 @@ export function FloorPlanView({
   return (
     <div
       className={cn(
-        "flex min-h-0 flex-1 flex-col gap-3",
+        "flex min-h-0 flex-1 flex-col gap-3 overflow-hidden",
         (pending || openingId) && "cursor-progress",
         className,
       )}
@@ -237,17 +237,19 @@ export function FloorPlanView({
         />
       </div>
 
-      <div className="flex min-h-0 flex-1 flex-col">
+      <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
         {isMobile ? (
-          <FloorMobileTableList
-            tables={tablesForArea}
-            onSelect={handleTablePress}
-            onWarm={warmTable}
-            billTotalsByTableId={billTotalsByTableId}
-            pendingBarDrinksByTableId={pendingBarDrinksByTableId}
-            openingTableId={openingId}
-            highlightedTableIds={selectedReserveIds}
-          />
+          <div data-floor-grid-scroll className="p-1">
+            <FloorMobileTableList
+              tables={tablesForArea}
+              onSelect={handleTablePress}
+              onWarm={warmTable}
+              billTotalsByTableId={billTotalsByTableId}
+              pendingBarDrinksByTableId={pendingBarDrinksByTableId}
+              openingTableId={openingId}
+              highlightedTableIds={selectedReserveIds}
+            />
+          </div>
         ) : (
           <FloorGridView
             tables={tablesForArea}
@@ -257,7 +259,7 @@ export function FloorPlanView({
             pendingBarDrinksByTableId={pendingBarDrinksByTableId}
             openingTableId={openingId}
             highlightedTableIds={selectedReserveIds}
-            className="min-h-[min(70vh,calc(100dvh-12rem))]"
+            className="min-h-0 flex-1"
           />
         )}
       </div>

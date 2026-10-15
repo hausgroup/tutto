@@ -15,13 +15,19 @@ export type FloorBootstrap = {
   canManage: boolean;
 };
 
-export async function bootstrapFloorAction(): Promise<
-  FloorBootstrap | { error: string }
-> {
+export async function bootstrapFloorAction(
+  restaurantIdOverride?: string,
+): Promise<FloorBootstrap | { error: string }> {
   try {
     const auth = await resolveAuthContext();
-    const restaurantId = getDefaultRestaurantId(auth);
+    const restaurantId = restaurantIdOverride ?? getDefaultRestaurantId(auth);
     if (!restaurantId) return { error: "RESTAURANT_NOT_FOUND" };
+    if (
+      restaurantIdOverride &&
+      !auth.memberships.some((m) => m.restaurantId === restaurantIdOverride)
+    ) {
+      return { error: "FORBIDDEN" };
+    }
 
     const [snapshot, billTotalsByTableId, pendingBarDrinksByTableId] =
       await Promise.all([

@@ -260,7 +260,8 @@ export async function saveTablePropertiesAction(
     const context = await resolveAuthContext();
     const parsed = tablePropertiesSchema.parse(input);
     await floorService.updateTableProperties(context, parsed);
-    revalidateFloorPaths();
+    // Salón only — editor stays client-driven (no slow RSC round-trip).
+    revalidatePath("/floor");
     return { ok: true };
   } catch (error) {
     return mapError(error);
@@ -293,7 +294,7 @@ export async function deleteTableAction(input: {
   try {
     const context = await resolveAuthContext();
     await floorService.deleteTable(context, input.id, input.restaurantId);
-    revalidateFloorPaths();
+    revalidatePath("/floor");
     return { ok: true };
   } catch (error) {
     return mapError(error);

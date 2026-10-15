@@ -68,7 +68,7 @@ export function FloorGridView({
       layoutTablesOnGrid(tables, {
         padEmpty: true,
         minColumns: FLOOR_GRID_COLUMNS,
-        minRows: editable ? FLOOR_GRID_ROWS : Math.min(4, FLOOR_GRID_ROWS),
+        minRows: editable ? FLOOR_GRID_ROWS : 4,
       }),
     [tables, editable],
   );
@@ -141,7 +141,7 @@ export function FloorGridView({
       )}
       onDragEnd={handleDragEnd}
     >
-      <div className="min-h-0 flex-1 overflow-auto p-3 md:p-4">
+      <div data-floor-grid-scroll className="p-3 md:p-4">
         <div
           className="mx-auto grid w-full max-w-[1400px] gap-2 md:gap-2.5"
           style={{

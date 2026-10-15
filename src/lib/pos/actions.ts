@@ -45,13 +45,19 @@ function mapBootstrapError(error: unknown): string {
   }
 }
 
-export async function warmPosCatalogAction(): Promise<
-  PosCatalogWarm | { error: string }
-> {
+export async function warmPosCatalogAction(
+  restaurantIdOverride?: string,
+): Promise<PosCatalogWarm | { error: string }> {
   try {
     const context = await resolveAuthContext();
-    const restaurantId = getDefaultRestaurantId(context);
+    const restaurantId = restaurantIdOverride ?? getDefaultRestaurantId(context);
     if (!restaurantId) return { error: "RESTAURANT_NOT_FOUND" };
+    if (
+      restaurantIdOverride &&
+      !context.memberships.some((m) => m.restaurantId === restaurantIdOverride)
+    ) {
+      return { error: "FORBIDDEN" };
+    }
     const catalog = await catalogService.getSnapshot(context, restaurantId);
     return {
       catalog,

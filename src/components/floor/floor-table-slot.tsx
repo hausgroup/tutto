@@ -187,6 +187,15 @@ export function FloorTableSlot({
               "[@media(hover:hover)]:group-hover:scale-[1.04] group-active:scale-[0.98]",
           )}
         >
+          {showPendingDrinks ? (
+            <span
+              className="absolute right-1.5 top-1.5 z-[5] flex size-5 items-center justify-center rounded-full bg-zinc-200/90 text-zinc-500 dark:bg-zinc-600/40 dark:text-zinc-400"
+              title="Bebidas pendientes de entregar"
+            >
+              <Wine className="size-3" aria-hidden />
+              <span className="sr-only">Bebidas pendientes de entregar</span>
+            </span>
+          ) : null}
           {reservePickSelected ? (
             <span
               className="absolute right-2 top-2 z-10 flex size-6 items-center justify-center rounded-md border-2 border-primary bg-primary text-primary-foreground shadow-sm"
@@ -201,17 +210,6 @@ export function FloorTableSlot({
                 <p className="truncate text-sm font-semibold leading-none tracking-tight text-zinc-800 dark:text-zinc-100">
                   {table.label}
                 </p>
-                {showPendingDrinks ? (
-                  <span
-                    className="flex size-6 shrink-0 items-center justify-center rounded-full bg-[#BBDEFB] text-[#2F5F8F] dark:bg-[#5B8FBF]/35 dark:text-[#BBDEFB]"
-                    title="Bebidas pendientes de entregar"
-                  >
-                    <Wine className="size-3.5" aria-hidden />
-                    <span className="sr-only">
-                      Bebidas pendientes de entregar
-                    </span>
-                  </span>
-                ) : null}
               </div>
               {!neutralAppearance ? (
                 <p className="truncate text-xs font-medium leading-tight text-zinc-400 dark:text-zinc-500">

@@ -38,8 +38,138 @@ import {
   type GridCell,
 } from "@/lib/floor/floor-grid";
 import { PageHeaderActions } from "@/components/layout/page-header-actions";
+import {
+  patchCachedFloorSnapshot,
+  patchCachedFloorTable,
+} from "@/lib/floor/client-cache";
 import { cn } from "@/lib/utils";
 import { Eye, Pencil, Plus, Trash2, X } from "lucide-react";
+
+function TablePropertiesPanel({
+  table,
+  restaurantId,
+  onClose,
+  onCommit,
+  onDelete,
+}: {
+  table: RestaurantTable;
+  restaurantId: string;
+  onClose: () => void;
+  onCommit: (table: RestaurantTable) => void;
+  onDelete: () => void;
+}) {
+  const [draft, setDraft] = useState(table);
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    setDraft(table);
+  }, [table.id]);
+
+  function saveProperties() {
+    const next = {
+      ...draft,
+      label: draft.label.trim() || table.label,
+      capacity: Math.min(30, Math.max(1, draft.capacity || 1)),
+    };
+    setDraft(next);
+    onCommit(next);
+    setSaving(true);
+    void saveTablePropertiesAction({
+      id: next.id,
+      restaurantId,
+      label: next.label,
+      capacity: next.capacity,
+      shape: "square",
+      status: next.status,
+      floorAreaId: next.floorAreaId,
+      isActive: next.isActive,
+    }).then((result) => {
+      setSaving(false);
+      if (result.error) toast.error(result.error);
+    });
+  }
+
+  return (
+    <div className="pointer-events-auto max-h-[min(70dvh,32rem)] overflow-y-auto rounded-xl border bg-card/95 p-4 shadow-xl backdrop-blur-md supports-[backdrop-filter]:bg-card/90">
+      <div className="mb-3 flex items-start justify-between gap-2">
+        <div>
+          <h3 className="font-medium">Propiedades</h3>
+          <p className="text-xs text-muted-foreground">Mesa {draft.label}</p>
+        </div>
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          onClick={onClose}
+          aria-label="Cerrar propiedades"
+        >
+          <X className="size-4" />
+        </Button>
+      </div>
+
+      <div className="flex flex-col gap-4">
+        <Input
+          id="edit-label"
+          label="Etiqueta"
+          value={draft.label}
+          onChange={(event) =>
+            setDraft((current) => ({ ...current, label: event.target.value }))
+          }
+        />
+        <Input
+          id="edit-capacity"
+          label="Capacidad"
+          type="number"
+          min={1}
+          max={30}
+          value={draft.capacity}
+          onChange={(event) =>
+            setDraft((current) => ({
+              ...current,
+              capacity: Number(event.target.value),
+            }))
+          }
+        />
+        <div className="flex items-center justify-between gap-3">
+          <span className="text-sm text-foreground">Activa</span>
+          <Switch
+            id="edit-active"
+            aria-label="Activa"
+            checked={draft.isActive}
+            onCheckedChange={(checked) =>
+              setDraft((current) => ({ ...current, isActive: checked }))
+            }
+          />
+        </div>
+        <div className="flex flex-col gap-2">
+          <Button
+            variant="secondary"
+            loading={saving}
+            onClick={saveProperties}
+          >
+            Guardar propiedades
+          </Button>
+          <Button
+            variant="danger"
+            disabled={saving}
+            onClick={() => {
+              onDelete();
+              void deleteTableAction({
+                id: table.id,
+                restaurantId,
+              }).then((result) => {
+                if (result.error) toast.error(result.error);
+              });
+            }}
+          >
+            <Trash2 className="size-4" />
+            Eliminar mesa
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 export function FloorPlanEditor({
   initialSnapshot,
@@ -61,10 +191,6 @@ export function FloorPlanEditor({
   const [renameAreaName, setRenameAreaName] = useState("");
   const [tableDialogOpen, setTableDialogOpen] = useState(false);
   const router = useRouter();
-
-  useEffect(() => {
-    setSnapshot(initialSnapshot);
-  }, [initialSnapshot]);
 
   const areas = useMemo(
     () => [...snapshot.areas].sort((a, b) => a.sortOrder - b.sortOrder),
@@ -113,12 +239,41 @@ export function FloorPlanEditor({
     snapshot.tables.find((table) => table.id === selectedTableId) ?? null;
 
   function updateLocalTable(table: RestaurantTable) {
-    setSnapshot((current) => ({
-      ...current,
-      tables: current.tables.map((item) =>
-        item.id === table.id ? table : item,
-      ),
-    }));
+    setSnapshot((current) => {
+      const next = {
+        ...current,
+        tables: current.tables.map((item) =>
+          item.id === table.id ? table : item,
+        ),
+      };
+      patchCachedFloorTable(table);
+      return next;
+    });
+  }
+
+  function commitTableProperties(table: RestaurantTable) {
+    setSnapshot((current) => {
+      const next = {
+        ...current,
+        tables: current.tables.map((item) =>
+          item.id === table.id ? table : item,
+        ),
+      };
+      patchCachedFloorSnapshot(next);
+      return next;
+    });
+  }
+
+  function removeTable(tableId: string) {
+    setSelectedTableId(null);
+    setSnapshot((current) => {
+      const next = {
+        ...current,
+        tables: current.tables.filter((item) => item.id !== tableId),
+      };
+      patchCachedFloorSnapshot(next);
+      return next;
+    });
   }
 
   function updateLocalTables(nextTables: RestaurantTable[]) {
@@ -217,22 +372,6 @@ export function FloorPlanEditor({
     const table = tablesForArea.find((item) => item.id === tableId);
     if (!table) return;
     moveTableToCell(table, cell);
-  }
-
-  function handlePropertySave() {
-    if (!selectedTable) return;
-    runAction(
-      saveTablePropertiesAction({
-        id: selectedTable.id,
-        restaurantId,
-        label: selectedTable.label,
-        capacity: selectedTable.capacity,
-        shape: "square",
-        status: selectedTable.status,
-        floorAreaId: selectedTable.floorAreaId,
-        isActive: selectedTable.isActive,
-      }),
-    );
   }
 
   return (
@@ -472,97 +611,13 @@ export function FloorPlanEditor({
         )}
       >
         {selectedTable ? (
-          <div className="pointer-events-auto max-h-[min(70dvh,32rem)] overflow-y-auto rounded-xl border bg-card/95 p-4 shadow-xl backdrop-blur-md supports-[backdrop-filter]:bg-card/90">
-            <div className="mb-3 flex items-start justify-between gap-2">
-              <div>
-                <h3 className="font-medium">Propiedades</h3>
-                <p className="text-xs text-muted-foreground">
-                  Mesa {selectedTable.label}
-                </p>
-              </div>
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                onClick={() => setSelectedTableId(null)}
-                aria-label="Cerrar propiedades"
-              >
-                <X className="size-4" />
-              </Button>
-            </div>
-
-            <div className="flex flex-col gap-4">
-              <Input
-                id="edit-label"
-                label="Etiqueta"
-                value={selectedTable.label}
-                onChange={(event) =>
-                  updateLocalTable({
-                    ...selectedTable,
-                    label: event.target.value,
-                  })
-                }
-              />
-              <Input
-                id="edit-capacity"
-                label="Capacidad"
-                type="number"
-                min={1}
-                max={30}
-                value={selectedTable.capacity}
-                onChange={(event) =>
-                  updateLocalTable({
-                    ...selectedTable,
-                    capacity: Number(event.target.value),
-                  })
-                }
-              />
-              <div className="flex items-center justify-between gap-3">
-                <span className="text-sm text-foreground">Activa</span>
-                <Switch
-                  id="edit-active"
-                  aria-label="Activa"
-                  checked={selectedTable.isActive}
-                  onCheckedChange={(checked) =>
-                    updateLocalTable({
-                      ...selectedTable,
-                      isActive: checked,
-                    })
-                  }
-                />
-              </div>
-              <div className="flex flex-col gap-2">
-                <Button
-                  variant="secondary"
-                  loading={pending}
-                  onClick={handlePropertySave}
-                >
-                  Guardar propiedades
-                </Button>
-                <Button
-                  variant="danger"
-                  loading={pending}
-                  onClick={() =>
-                    runAction(
-                      deleteTableAction({
-                        id: selectedTable.id,
-                        restaurantId,
-                      }).then((result) => {
-                        if (!result.error) {
-                          setSelectedTableId(null);
-                          router.refresh();
-                        }
-                        return result;
-                      }),
-                    )
-                  }
-                >
-                  <Trash2 className="size-4" />
-                  Eliminar mesa
-                </Button>
-              </div>
-            </div>
-          </div>
+          <TablePropertiesPanel
+            table={selectedTable}
+            restaurantId={restaurantId}
+            onClose={() => setSelectedTableId(null)}
+            onCommit={commitTableProperties}
+            onDelete={() => removeTable(selectedTable.id)}
+          />
         ) : null}
       </aside>
     </div>

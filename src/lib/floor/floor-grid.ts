@@ -6,7 +6,7 @@ export const FLOOR_GRID_CELL_PX = 128;
 /** Default visual size stored for tables (uniform slots in the salón). */
 export const FLOOR_TABLE_SLOT_SIZE = 96;
 
-/** Visible / editable floor grid. */
+/** Default minimum visible floor grid (can grow with table positions). */
 export const FLOOR_GRID_COLUMNS = 6;
 export const FLOOR_GRID_ROWS = 5;
 
@@ -28,20 +28,8 @@ export type FloorGridLayout = {
 };
 
 export function tableToGridCell(table: RestaurantTable): GridCell {
-  const col = Math.max(
-    0,
-    Math.min(
-      FLOOR_GRID_COLUMNS - 1,
-      Math.round(table.posX / FLOOR_GRID_CELL_PX),
-    ),
-  );
-  const row = Math.max(
-    0,
-    Math.min(
-      FLOOR_GRID_ROWS - 1,
-      Math.round(table.posY / FLOOR_GRID_CELL_PX),
-    ),
-  );
+  const col = Math.max(0, Math.round(table.posX / FLOOR_GRID_CELL_PX));
+  const row = Math.max(0, Math.round(table.posY / FLOOR_GRID_CELL_PX));
   return { col, row };
 }
 
@@ -59,6 +47,34 @@ export function cellKey(col: number, row: number): string {
   return `${col}:${row}`;
 }
 
+function findNextEmptyCellFromKeys(
+  occupied: Set<string>,
+  minColumns = FLOOR_GRID_COLUMNS,
+  minRows = FLOOR_GRID_ROWS,
+): GridCell {
+  let maxCol = minColumns - 1;
+  let maxRow = minRows - 1;
+  for (const key of occupied) {
+    const [col, row] = key.split(":").map((part) => Number(part));
+    if (!Number.isFinite(col) || !Number.isFinite(row)) continue;
+    maxCol = Math.max(maxCol, col);
+    maxRow = Math.max(maxRow, row);
+  }
+
+  const searchCols = Math.max(minColumns, maxCol + 2);
+  const searchRows = Math.max(minRows, maxRow + 2);
+
+  for (let row = 0; row < searchRows; row += 1) {
+    for (let col = 0; col < searchCols; col += 1) {
+      if (!occupied.has(cellKey(col, row))) {
+        return { col, row };
+      }
+    }
+  }
+
+  return { col: 0, row: 0 };
+}
+
 /** First free cell in row-major order within the floor grid. */
 export function findNextEmptyGridCell(tables: RestaurantTable[]): GridCell {
   const occupied = new Set(
@@ -70,18 +86,6 @@ export function findNextEmptyGridCell(tables: RestaurantTable[]): GridCell {
   return findNextEmptyCellFromKeys(occupied);
 }
 
-function findNextEmptyCellFromKeys(occupied: Set<string>): GridCell {
-  for (let row = 0; row < FLOOR_GRID_ROWS; row += 1) {
-    for (let col = 0; col < FLOOR_GRID_COLUMNS; col += 1) {
-      if (!occupied.has(cellKey(col, row))) {
-        return { col, row };
-      }
-    }
-  }
-
-  return { col: 0, row: 0 };
-}
-
 /** Map tables to grid coordinates; collisions get the next free cell. */
 export function layoutTablesOnGrid(
   tables: RestaurantTable[],
@@ -89,12 +93,14 @@ export function layoutTablesOnGrid(
 ): FloorGridLayout {
   const claimed = new Set<string>();
   const placed: GridPlacedTable[] = [];
+  const minColumns = options?.minColumns ?? FLOOR_GRID_COLUMNS;
+  const minRows = options?.minRows ?? FLOOR_GRID_ROWS;
 
   for (const table of tables) {
     let { col, row } = tableToGridCell(table);
     let key = cellKey(col, row);
     if (claimed.has(key)) {
-      const free = findNextEmptyCellFromKeys(claimed);
+      const free = findNextEmptyCellFromKeys(claimed, minColumns, minRows);
       col = free.col;
       row = free.row;
       key = cellKey(col, row);
@@ -103,8 +109,8 @@ export function layoutTablesOnGrid(
     placed.push({ table, col, row });
   }
 
-  let columnCount = options?.minColumns ?? FLOOR_GRID_COLUMNS;
-  let rowCount = options?.minRows ?? FLOOR_GRID_ROWS;
+  let columnCount = minColumns;
+  let rowCount = minRows;
 
   for (const { col, row } of placed) {
     columnCount = Math.max(columnCount, col + 1);
@@ -112,18 +118,12 @@ export function layoutTablesOnGrid(
   }
 
   if (options?.padEmpty) {
-    columnCount = Math.min(columnCount + 1, FLOOR_GRID_COLUMNS);
-    rowCount = Math.min(rowCount + 1, FLOOR_GRID_ROWS);
+    columnCount += 1;
+    rowCount += 1;
   }
 
-  columnCount = Math.min(
-    Math.max(columnCount, options?.minColumns ?? FLOOR_GRID_COLUMNS),
-    FLOOR_GRID_COLUMNS,
-  );
-  rowCount = Math.min(
-    Math.max(rowCount, options?.minRows ?? FLOOR_GRID_ROWS),
-    FLOOR_GRID_ROWS,
-  );
+  columnCount = Math.max(columnCount, minColumns);
+  rowCount = Math.max(rowCount, minRows);
 
   return { placed, columnCount, rowCount };
 }
