@@ -53,7 +53,9 @@ Modern restaurant point-of-sale for Colombia — floor management, inventory, ca
    5. Later migrations in `database/migrations/` in filename order (e.g. `20251013180000_staff_hr_fields.sql` for área, ingreso y cumpleaños en Personal)
    6. `database/seed.sql`
    7. `database/seed-menu-ciao.sql` (menú Ciao desde `temp/menu_ciao.csv`)
-   7b. `database/scripts/purge-legacy-menu-products.sql` (opcional: borra productos demo anteriores)
+   7b. `database/seed-menu-hunter-butcher.sql` (menú Hunter & Butcher desde `temp/menu_hunter_butcher.csv`)
+   7c. `database/seed-menu-haus.sql` (menú Haus desde `temp/menu_haus.csv`)
+   7d. `database/scripts/purge-legacy-menu-products.sql` (opcional: borra productos demo anteriores)
    8. `database/seed-phase3-9.sql` (recetas e inventario demo)
 
 4. **First admin user**

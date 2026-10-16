@@ -46,6 +46,7 @@ export function MoneyInput({
     <Input
       {...props}
       type="text"
+      capitalize="off"
       inputMode={allowDecimals ? "decimal" : "numeric"}
       autoComplete="off"
       className={cn("tabular-nums", className)}

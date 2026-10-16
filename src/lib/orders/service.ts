@@ -132,6 +132,91 @@ async function syncTableForOrder(
   );
 }
 
+async function replacePendingDraftOnServer(
+  context: AuthContext,
+  restaurantId: string,
+  orderId: string,
+  lines: Array<{
+    productId: string;
+    quantity: number;
+    serveTiming?: DrinkServeTiming | null;
+  }>,
+) {
+  await ordersDb.deletePendingOrderItemsForOrder(orderId);
+  const categories = await catalogCategoriesFor(restaurantId);
+  const productIds = [
+    ...new Set(
+      lines.filter((line) => line.quantity > 0).map((line) => line.productId),
+    ),
+  ];
+  const products = await Promise.all(
+    productIds.map((id) => fetchProductById(restaurantId, id)),
+  );
+  const productById = new Map(
+    products
+      .filter((product): product is NonNullable<typeof product> => product != null)
+      .map((product) => [product.id, product]),
+  );
+
+  const rows: Array<{
+    orderId: string;
+    productId: string;
+    productName: string;
+    quantity: number;
+    unitPriceMinor: number;
+    taxRateBps: number;
+    lineSubtotalMinor: number;
+    lineTaxMinor: number;
+    lineTotalMinor: number;
+    preparationStation: OrderItem["preparationStation"];
+    serveTiming: DrinkServeTiming | null;
+    status: "pending";
+  }> = [];
+
+  for (const line of lines) {
+    if (line.quantity <= 0) continue;
+    const product = productById.get(line.productId);
+    if (!product || !product.isActive) throw new Error("PRODUCT_NOT_FOUND");
+    const serveTiming = resolveServeTiming(
+      product,
+      categories,
+      line.serveTiming ?? undefined,
+    );
+    const calculated = calculateLineItem({
+      unitPriceMinor: product.priceMinor,
+      quantity: line.quantity,
+      taxRateBps: product.taxRateBps,
+    });
+    rows.push({
+      orderId,
+      productId: product.id,
+      productName: product.name,
+      quantity: line.quantity,
+      unitPriceMinor: product.priceMinor,
+      taxRateBps: product.taxRateBps,
+      lineSubtotalMinor: calculated.lineSubtotalMinor,
+      lineTaxMinor: calculated.lineTaxMinor,
+      lineTotalMinor: calculated.lineTotalMinor,
+      preparationStation: product.preparationStation,
+      serveTiming,
+      status: "pending",
+    });
+  }
+
+  await ordersDb.insertOrderItemsBatch(rows);
+  await ordersDb.mergeDuplicateWithMealOrderItems(orderId);
+  const refreshed = await ordersDb.fetchOrderById(orderId);
+  if (!refreshed) throw new Error("ORDER_NOT_FOUND");
+  recalculateOrder(refreshed);
+  await ordersDb.updateOrderTotals(orderId, {
+    subtotalMinor: refreshed.subtotalMinor,
+    taxMinor: refreshed.taxMinor,
+    totalMinor: refreshed.totalMinor,
+    status: refreshed.status,
+  });
+  await syncTableForOrder(context, restaurantId, refreshed);
+}
+
 export const orderService = {
   async getOpenOrderForTable(
     context: AuthContext,
@@ -929,6 +1014,171 @@ export const orderService = {
     return refreshed;
   },
 
+  /** Replace server pending lines with the POS draft (called once before send). */
+  async syncPendingDraft(
+    context: AuthContext,
+    input: {
+      restaurantId: string;
+      orderId: string;
+      lines: Array<{
+        productId: string;
+        quantity: number;
+        serveTiming?: DrinkServeTiming | null;
+      }>;
+    },
+  ): Promise<Order> {
+    requirePermission(context, PERMISSIONS.ORDERS_MODIFY, input.restaurantId);
+
+    if (canUseDemoExperience()) {
+      const store = getDemoRestaurantStore(input.restaurantId);
+      const order = store.orders.find((o) => o.id === input.orderId);
+      if (!order || order.status === "completed") {
+        throw new Error("ORDER_NOT_FOUND");
+      }
+      order.items = order.items.filter((item) => item.status !== "pending");
+      order.status = deriveOrderStatusFromItems(order.items, order.status);
+      recalculateOrder(order);
+      for (const line of input.lines) {
+        if (line.quantity <= 0) continue;
+        await this.addProductToOrder(context, {
+          restaurantId: input.restaurantId,
+          orderId: input.orderId,
+          productId: line.productId,
+          quantity: line.quantity,
+          serveTiming: line.serveTiming ?? undefined,
+        });
+      }
+      const refreshed = store.orders.find((o) => o.id === input.orderId);
+      if (!refreshed) throw new Error("ORDER_NOT_FOUND");
+      return structuredClone(refreshed);
+    }
+
+    const order = await ordersDb.fetchOrderById(input.orderId);
+    if (
+      !order ||
+      order.restaurantId !== input.restaurantId ||
+      order.status === "completed"
+    ) {
+      throw new Error("ORDER_NOT_FOUND");
+    }
+
+    await replacePendingDraftOnServer(
+      context,
+      input.restaurantId,
+      input.orderId,
+      input.lines,
+    );
+    const refreshed = await ordersDb.fetchOrderById(input.orderId);
+    if (!refreshed) throw new Error("ORDER_NOT_FOUND");
+    return refreshed;
+  },
+
+  async sendPosDraft(
+    context: AuthContext,
+    input: {
+      restaurantId: string;
+      orderId: string;
+      lines: Array<{
+        productId: string;
+        quantity: number;
+        serveTiming?: DrinkServeTiming | null;
+      }>;
+    },
+  ): Promise<Order> {
+    requirePermission(context, PERMISSIONS.ORDERS_MODIFY, input.restaurantId);
+
+    if (canUseDemoExperience()) {
+      const store = getDemoRestaurantStore(input.restaurantId);
+      const order = store.orders.find((o) => o.id === input.orderId);
+      if (!order || order.status === "completed") {
+        throw new Error("ORDER_NOT_FOUND");
+      }
+      order.items = order.items.filter((item) => item.status !== "pending");
+      for (const line of input.lines) {
+        if (line.quantity <= 0) continue;
+        const product = store.catalog.products.find(
+          (p) => p.id === line.productId,
+        );
+        if (!product || !product.isActive) throw new Error("PRODUCT_NOT_FOUND");
+        const categories = store.catalog.categories;
+        const serveTiming = resolveServeTiming(
+          product,
+          categories,
+          line.serveTiming ?? undefined,
+        );
+        const calculated = calculateLineItem({
+          unitPriceMinor: product.priceMinor,
+          quantity: line.quantity,
+          taxRateBps: product.taxRateBps,
+        });
+        order.items.push({
+          id: randomUUID(),
+          orderId: order.id,
+          productId: product.id,
+          productName: product.name,
+          quantity: line.quantity,
+          unitPriceMinor: product.priceMinor,
+          taxRateBps: product.taxRateBps,
+          lineSubtotalMinor: calculated.lineSubtotalMinor,
+          lineTaxMinor: calculated.lineTaxMinor,
+          lineTotalMinor: calculated.lineTotalMinor,
+          status: "pending",
+          preparationStation: product.preparationStation,
+          serveTiming,
+          notes: null,
+          modifiers: [],
+          sentAt: null,
+        });
+      }
+      order.items = consolidateWithMealOrderLines(order.items);
+      const sentAt = new Date().toISOString();
+      for (const item of order.items) {
+        if (item.status === "pending") {
+          item.status = "sent";
+          item.sentAt = sentAt;
+        }
+      }
+      order.status = "in_progress";
+      recalculateOrder(order);
+      await syncTableForOrder(context, input.restaurantId, order);
+      return structuredClone(order);
+    }
+
+    const order = await ordersDb.fetchOrderById(input.orderId);
+    if (
+      !order ||
+      order.restaurantId !== input.restaurantId ||
+      order.status === "completed"
+    ) {
+      throw new Error("ORDER_NOT_FOUND");
+    }
+
+    await replacePendingDraftOnServer(
+      context,
+      input.restaurantId,
+      input.orderId,
+      input.lines,
+    );
+    const sentAt = await ordersDb.markPendingItemsSent(input.orderId);
+    const refreshed = await ordersDb.fetchOrderById(input.orderId);
+    if (!refreshed) throw new Error("ORDER_NOT_FOUND");
+    for (const item of refreshed.items) {
+      if (item.status === "sent" && item.sentAt == null) {
+        item.sentAt = sentAt;
+      }
+    }
+    recalculateOrder(refreshed);
+    refreshed.status = "in_progress";
+    await ordersDb.updateOrderTotals(input.orderId, {
+      subtotalMinor: refreshed.subtotalMinor,
+      taxMinor: refreshed.taxMinor,
+      totalMinor: refreshed.totalMinor,
+      status: refreshed.status,
+    });
+    await syncTableForOrder(context, input.restaurantId, refreshed);
+    return refreshed;
+  },
+
   async sendOrderItems(
     context: AuthContext,
     restaurantId: string,
@@ -1141,18 +1391,32 @@ export const orderService = {
     let orderCompleted = false;
     if (remainingAfter <= 0) {
       orderCompleted = true;
-      for (const item of order.items) {
-        if (item.status === "cancelled") continue;
-        const product = await fetchProductById(input.restaurantId, item.productId);
-        if (product?.trackInventory) {
+      const inventoryItems = order.items.filter(
+        (item) => item.status !== "cancelled",
+      );
+      const productIds = [
+        ...new Set(inventoryItems.map((item) => item.productId)),
+      ];
+      const productsById = new Map(
+        (
+          await Promise.all(
+            productIds.map((id) =>
+              fetchProductById(input.restaurantId, id).then((p) => [id, p] as const),
+            ),
+          )
+        ).map(([id, product]) => [id, product]),
+      );
+      await Promise.all(
+        inventoryItems.map(async (item) => {
+          if (!productsById.get(item.productId)?.trackInventory) return;
           await inventoryService.consumeForProductSale(
             input.restaurantId,
             item.productId,
             item.quantity,
             item.id,
           );
-        }
-      }
+        }),
+      );
       await ordersDb.finalizeOrderFulfillment(order.id);
       await enqueueSiigoSyncJob({
         restaurantId: input.restaurantId,
@@ -1229,6 +1493,45 @@ export const orderService = {
     }
 
     return ordersDb.fetchPendingBarDrinksByTableId(restaurantId);
+  },
+
+  async deliverWithMealBarDrinksAtTable(
+    context: AuthContext,
+    restaurantId: string,
+    tableId: string,
+  ): Promise<number> {
+    requirePermission(context, PERMISSIONS.ORDERS_MODIFY, restaurantId);
+    getActiveMembership(context, restaurantId);
+
+    if (canUseDemoExperience()) {
+      const store = getDemoRestaurantStore(restaurantId);
+      let updated = 0;
+      for (const order of store.orders) {
+        if (
+          order.tableId !== tableId ||
+          order.status === "completed" ||
+          order.status === "voided"
+        ) {
+          continue;
+        }
+        for (const item of order.items) {
+          if (item.serveTiming !== "with_meal") continue;
+          if (item.preparationStation !== "bar") continue;
+          if (
+            item.status !== "sent" &&
+            item.status !== "in_progress" &&
+            item.status !== "ready"
+          ) {
+            continue;
+          }
+          item.status = "delivered";
+          updated += 1;
+        }
+      }
+      return updated;
+    }
+
+    return ordersDb.deliverWithMealBarItemsAtTable(restaurantId, tableId);
   },
 };
 
@@ -1391,19 +1694,6 @@ export const reportService = {
   ): Promise<RestaurantReports> {
     getActiveMembership(context, restaurantId);
     const yearMonth = options?.yearMonth ?? currentYearMonthInBogota();
-
-    if (useMockReports()) {
-      const { fetchHistoricalSalesForMonth } = await import(
-        "@/lib/reports/historical-sales/repository"
-      );
-      const historical = await fetchHistoricalSalesForMonth(
-        restaurantId,
-        yearMonth,
-      );
-      if (historical.length === 0) {
-        return buildMockRestaurantReports(yearMonth);
-      }
-    }
 
     if (canUseDemoExperience()) {
       const store = getDemoRestaurantStore(restaurantId);

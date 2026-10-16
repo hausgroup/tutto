@@ -395,6 +395,53 @@ export async function deleteOrderItem(itemId: string) {
   if (error) throw error;
 }
 
+export async function deletePendingOrderItemsForOrder(orderId: string) {
+  const supabase = await createSupabaseServerClient();
+  const { error } = await supabase
+    .from("order_items")
+    .delete()
+    .eq("order_id", orderId)
+    .eq("status", "pending");
+  if (error) throw error;
+}
+
+export async function insertOrderItemsBatch(
+  rows: Array<{
+    orderId: string;
+    productId: string;
+    productName: string;
+    quantity: number;
+    unitPriceMinor: number;
+    taxRateBps: number;
+    lineSubtotalMinor: number;
+    lineTaxMinor: number;
+    lineTotalMinor: number;
+    preparationStation: PreparationStation;
+    serveTiming?: DrinkServeTiming | null;
+    status?: OrderItemStatus;
+  }>,
+): Promise<void> {
+  if (rows.length === 0) return;
+  const supabase = await createSupabaseServerClient();
+  const { error } = await supabase.from("order_items").insert(
+    rows.map((row) => ({
+      order_id: row.orderId,
+      product_id: row.productId,
+      product_name: row.productName,
+      quantity: row.quantity,
+      unit_price_minor: row.unitPriceMinor,
+      tax_rate_bps: row.taxRateBps,
+      line_subtotal_minor: row.lineSubtotalMinor,
+      line_tax_minor: row.lineTaxMinor,
+      line_total_minor: row.lineTotalMinor,
+      preparation_station: row.preparationStation,
+      serve_timing: row.serveTiming ?? null,
+      status: row.status ?? "pending",
+    })),
+  );
+  if (error) throw error;
+}
+
 export async function mergeDuplicateWithMealOrderItems(
   orderId: string,
 ): Promise<void> {
@@ -914,9 +961,10 @@ export async function fetchPendingBarDrinksByTableId(
   const orderIds = [...tableByOrderId.keys()];
   const { data: items, error: itemsError } = await supabase
     .from("order_items")
-    .select("order_id, preparation_station, status, quantity")
+    .select("order_id, preparation_station, status, quantity, serve_timing")
     .in("order_id", orderIds)
     .eq("preparation_station", "bar")
+    .eq("serve_timing", "with_meal")
     .in("status", ["sent", "in_progress", "ready"]);
 
   if (itemsError) throw itemsError;
@@ -928,6 +976,35 @@ export async function fetchPendingBarDrinksByTableId(
     if (tableId) result[tableId] = true;
   }
   return result;
+}
+
+export async function deliverWithMealBarItemsAtTable(
+  restaurantId: string,
+  tableId: string,
+): Promise<number> {
+  const supabase = await createSupabaseServerClient();
+  const { data: orders, error: ordersError } = await supabase
+    .from("orders")
+    .select("id")
+    .eq("restaurant_id", restaurantId)
+    .eq("table_id", tableId)
+    .in("status", ["open", "in_progress", "ready"]);
+
+  if (ordersError) throw ordersError;
+  const orderIds = (orders ?? []).map((row) => row.id as string);
+  if (orderIds.length === 0) return 0;
+
+  const { data: updated, error: updateError } = await supabase
+    .from("order_items")
+    .update({ status: "delivered" })
+    .in("order_id", orderIds)
+    .eq("preparation_station", "bar")
+    .eq("serve_timing", "with_meal")
+    .in("status", ["sent", "in_progress", "ready"])
+    .select("id");
+
+  if (updateError) throw updateError;
+  return updated?.length ?? 0;
 }
 
 export type CompletedSaleRow = {

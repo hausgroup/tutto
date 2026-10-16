@@ -21,6 +21,7 @@ export default async function RecipesPage() {
 
   return (
     <RecipesPanel
+      key={restaurantId}
       restaurantId={restaurantId}
       inventory={inventory}
       products={catalog.products}

@@ -514,7 +514,7 @@ export function MenuCatalog({
   }
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-8 pb-6">
       <PageHeaderActions>
         <div className="flex w-full flex-wrap items-center justify-end gap-2">
           <CatalogSearchField

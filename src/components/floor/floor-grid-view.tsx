@@ -34,7 +34,10 @@ export function FloorGridView({
   allowInactive = false,
   billTotalsByTableId,
   pendingBarDrinksByTableId,
+  deliveringWithMealDrinksTableId = null,
+  onDeliverPendingWithMealDrinks,
   openingTableId = null,
+  reservePickMode = false,
   className,
 }: {
   tables: RestaurantTable[];
@@ -50,7 +53,10 @@ export function FloorGridView({
   allowInactive?: boolean;
   billTotalsByTableId?: Record<string, number>;
   pendingBarDrinksByTableId?: Record<string, true>;
+  deliveringWithMealDrinksTableId?: string | null;
+  onDeliverPendingWithMealDrinks?: (table: RestaurantTable) => void;
   openingTableId?: string | null;
+  reservePickMode?: boolean;
   className?: string;
 }) {
   const [dragOverKey, setDragOverKey] = useState<string | null>(null);
@@ -184,6 +190,7 @@ export function FloorGridView({
                       selectedTableId === table.id ||
                       Boolean(highlighted?.has(table.id))
                     }
+                    reservePickMode={reservePickMode}
                     allowInactive={allowInactive}
                     draggable={editable}
                     isDragging={draggingId === table.id}
@@ -195,6 +202,12 @@ export function FloorGridView({
                     pendingBarDrinks={
                       !editable &&
                       Boolean(pendingBarDrinksByTableId?.[table.id])
+                    }
+                    onDeliverPendingWithMealDrinks={
+                      !editable ? onDeliverPendingWithMealDrinks : undefined
+                    }
+                    deliveringWithMealDrinks={
+                      deliveringWithMealDrinksTableId === table.id
                     }
                     busy={openingTableId === table.id}
                     neutralAppearance={editable}

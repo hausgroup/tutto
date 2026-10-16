@@ -79,12 +79,13 @@ async function renderTicketPage(
 
   const meta = [
     ticket.tableLabel ? `Mesa ${ticket.tableLabel}` : "Para llevar",
+    ticket.attendantName ? `Atiende: ${ticket.attendantName}` : null,
     `Pedido #${ticket.orderNumber}`,
     new Date(ticket.sentAt).toLocaleString("es-CO", {
       dateStyle: "short",
       timeStyle: "short",
     }),
-  ];
+  ].filter((row): row is string => row != null);
   for (const row of meta) {
     page.drawText(row, { x: MARGIN, y, size: 10, font });
     y -= LINE_HEIGHT;

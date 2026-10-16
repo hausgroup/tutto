@@ -20,7 +20,11 @@ export type StationTicketPdfPayload = {
 export async function buildStationTicketPdfsFromOrder(
   order: Order,
   catalog: CatalogSnapshot,
-  input: { itemIds?: string[]; reprint?: boolean },
+  input: {
+    itemIds?: string[];
+    reprint?: boolean;
+    attendantName?: string | null;
+  },
 ): Promise<StationTicketPdfPayload | null> {
   let items = selectOrderItemsForStationTickets(order.items);
   if (input.itemIds?.length) {
@@ -35,9 +39,11 @@ export async function buildStationTicketPdfsFromOrder(
     [
       buildStationTicket("kitchen", order, kitchen, sentAt, {
         reprint: input.reprint,
+        attendantName: input.attendantName,
       }),
       buildStationTicket("bar", order, bar, sentAt, {
         reprint: input.reprint,
+        attendantName: input.attendantName,
       }),
     ] as const
   ).filter((t): t is NonNullable<typeof t> => t != null);

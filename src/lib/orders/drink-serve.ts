@@ -186,7 +186,7 @@ export function linesMatchForQuantityAdjust(
     return canRemoveLineFromPosTicket(item);
   }
   if (item.serveTiming === "with_meal") return false;
-  if (!isEnseguidaServePool(serveTiming)) return false;
+  // Kitchen (null timing) and bar "enseguida" (null/immediate) share one pool per product.
   if (delta > 0) return item.status === "pending";
   return item.status === "pending" || item.status === "sent";
 }

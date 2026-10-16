@@ -32,6 +32,7 @@ export default async function ProductsPage() {
 
   return (
     <MenuCatalog
+      key={restaurantId}
       restaurantId={restaurantId}
       initialSnapshot={snapshot}
       canManage={catalogService.canManage(context, restaurantId)}

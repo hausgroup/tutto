@@ -37,6 +37,7 @@ export default async function InventoryPage() {
 
   return (
     <InventoryPanel
+      key={restaurantId}
       restaurantId={restaurantId}
       restaurantName={restaurantName}
       initialSnapshot={snapshot}

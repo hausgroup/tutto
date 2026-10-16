@@ -60,3 +60,38 @@ export function consolidateWithMealOrderLines(items: OrderItem[]): OrderItem[] {
 
   return result;
 }
+
+function enseguidaPendingMergeKey(item: OrderItem): string | null {
+  if (item.serveTiming === "with_meal") return null;
+  if (item.status !== "pending" || item.quantity <= 0) return null;
+  return `${item.productId}|${item.unitPriceMinor}|${modifierKey(item)}`;
+}
+
+/** Merge duplicate pending enseguida / kitchen lines (e.g. after rapid POS taps). */
+export function consolidateEnseguidaPendingLines(
+  items: OrderItem[],
+): OrderItem[] {
+  const result: OrderItem[] = [];
+  const indexByKey = new Map<string, number>();
+
+  for (const item of items) {
+    const key = enseguidaPendingMergeKey(item);
+    if (!key) {
+      result.push(item);
+      continue;
+    }
+    const existingIndex = indexByKey.get(key);
+    if (existingIndex === undefined) {
+      indexByKey.set(key, result.length);
+      result.push({ ...item });
+      continue;
+    }
+    const existing = result[existingIndex]!;
+    result[existingIndex] = recalcLine(
+      existing,
+      existing.quantity + item.quantity,
+    );
+  }
+
+  return result;
+}

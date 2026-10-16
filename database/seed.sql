@@ -117,7 +117,8 @@ on conflict (id) do update set
   restaurant_id = excluded.restaurant_id,
   floor_area_id = excluded.floor_area_id;
 
--- Full Ciao menu: run database/seed-menu-ciao.sql (or node scripts/import-menu-ciao.mjs)
+-- Full menus: seed-menu-ciao.sql, seed-menu-hunter-butcher.sql, seed-menu-haus.sql
+-- (or node scripts/import-menu-{ciao,hunter-butcher,haus}.mjs)
 
 insert into public.payment_methods (restaurant_id, code, name, sort_order) values
   ('22222222-2222-4222-8222-222222222222', 'cash', 'Efectivo', 1),

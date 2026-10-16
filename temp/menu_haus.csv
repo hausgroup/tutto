@@ -1,0 +1,64 @@
+categoria,producto,precio_cop,precio_alternativo_cop,descripcion,notas
+Cocktails,Daikiri Corozo,20000,,"Ron dorado, corozo y limón",
+Cocktails,Manhattan Mompox,20000,,"Whiskey, vino de corozo y vermouth rosso",
+Cocktails,Ginger Gin,20000,,"Gin, ginger ale, romero y limón",
+Cocktails,Margarita Dark,20000,,"Tequila, triple sec y almíbar de panela",
+Cocktails,Mojito Cubano,20000,,"Ron dorado, yerbabuena, soda y limón",
+Cocktails,Atardecer,22000,,"Gin, Aperol y limón",
+Cocktails,Moscow Mule,21000,,"Vodka, ginger beer y limón",
+Cocktails,Gin Tonic Jamaica,20000,,"Gin, jamaica y agua tónica",
+Cocktails,Aperol Spritz,22000,,"Prosecco y Aperol",
+Cocktails,Negroni,21000,,"Gin, Aperol y vermut",
+Cocktails,Sangría Sabanera,20000,,"Vino de corozo, frutas y ginger ale",
+Entradas,Langostinos Haus,23500,,"Langostinos apanados con panko y coco, mayosiracha y salsa de anguila",Picante
+Entradas,Causa Sabanera,24500,,"Ceviche de chicharrón, puré de plátano maduro, cabeza de gato y salsa agridulce",Picante
+Entradas,Papas Haus,21500,,"Papas rústicas, salsa de queso cheddar, bacon ahumado y cebollín",
+Entradas,Croquetas Salmón,24000,,"Croquetas cremosas de salmón, suero de cilantro y miel picante",
+Platos fuertes,Pollo Saltado,38500,,"Pechuga salteada con pimentón, cebolla, berenjena, zucchini, salsa teriyaki y puré de papa cremoso",
+Platos fuertes,Ensalada Imperator,40500,,"Pollo a la parrilla, mix de verdes, tomate cherry, parmesano, zucchini, bacon crutones, aceto balsámico y aceite de oliva",
+Platos fuertes,Ensalada Haus,40500,,"Salmón salteado con pimentón, berenjena, zucchini, cebolla y salsa de anguila",
+Platos fuertes,Pastas Haus,40500,,"Rigatoni en salsa blanca, fondue de tomates cherry, albahaca, grana padano y pollo asado",
+Platos fuertes,Costillas,48500,,"Costillas de cerdo en salsa BBQ de whiskey, ensalada y papas rústicas",
+Platos fuertes,Salmón,53000,,"Salmón a la parrilla con salsa de camarones, calamar y pulpo, puré de plátano y vegetales salteados",
+Platos fuertes,Lomo,52000,,"Lomo fino a la parrilla con reducción de vino, papas rústicas y ensalada",
+Platos fuertes,Pollo Haus,44000,,"Pechuga con queso gouda y espinaca, salsa de tres quesos, cebolla caramelizada y puré de papa",
+Platos fuertes,Lomo Blue,51500,,"Lomo fino a la parrilla en salsa de cuatro quesos, cebolla caramelizada y puré de papas",
+Platos fuertes,Lomo Tartufo,53000,,"Lomo a la parrilla en salsa de parmigiano y trufa blanca, puré cremoso y salsa de corozo",
+Platos fuertes,Lomo Salteado,46000,,"Lomo en tiras salteado con cebolla, pimentón, tomate y salsa de soya, puré cremoso de papas",
+Platos fuertes,Pastas Rosse,47500,,"Pastas cortas en salsa de tomate San Marzano y queso, con lomo salteado y parmesano",
+Platos fuertes,Pastas Di Mare,44000,,"Rigatoni en salsa de langostinos y crema, pulpo, camarón, calamar y mejillones, tomates cherry, ajo y perejil",
+Hamburguesas,Clásica,30000,,"Brioche, carne 160 g, queso emmental, cebolla grillé, tomate, lechuga y aderezo",Incluye papas rústicas
+Hamburguesas,Cheese Bacon,31000,,"Brioche, carne 160 g, cheddar, salsa BBQ casera y bacon ahumado",Incluye papas rústicas
+Hamburguesas,Fondue,32000,,"Brioche, carne 160 g, rúcula, fondue de quesos, mermelada de cebolla y portobellos",Incluye papas rústicas
+Hamburguesas,Sweet,32000,,"Brioche, carne 160 g, gouda, rúcula, mostaza, mermelada de cebolla y bacon ahumado",Incluye papas rústicas
+Hamburguesas,Mexa,30000,,"Brioche, carne 160 g, emmental, guacamole, bacon, cebolla y ketchup picante",Incluye papas rústicas
+Hamburguesas,Haus,32000,,"Brioche, carne 160 g, queso azul, fondue, bacon, rúcula, mermelada de cebolla y mostaza",Incluye papas rústicas
+Hamburguesas,Caribbean,32500,,"Brioche, carne 160 g, tomate, queso costeño, cebolla grillé, bacon, alioli y BBQ",Incluye papas rústicas
+Hamburguesas,Crunchy Ribs,37000,,"Brioche, carne 160 g, mozzarella, costilla esmechada, lechuga, mostaza, aros de cebolla y BBQ",Incluye papas rústicas
+Hamburguesas,Doble Doble,35500,,"Brioche, doble carne 100 g, doble cheddar, bacon, BBQ y mayonesa",Incluye papas rústicas
+Hamburguesas,El Patio,34500,,"Brioche, carne 160 g, fondue, tomate, cebolla caramelizada, espinaca, bacon, BBQ y mostaza",Incluye papas rústicas
+Hamburguesas,D'La Haus,32000,,"Brioche, carne 160 g, bacon, doble cheddar, cebolla grillé y BBQ",Incluye papas rústicas
+Hamburguesas,Francesa,32000,,"Brioche, carne 160 g, mostaza, stroganoff de portobellos y queso, cebolla caramelizada y aros de cebolla",Incluye papas rústicas
+Menú infantil,Hamburguesita,26000,,"Pan brioche, carne 100 g, queso cheddar, cebolla crispy y BBQ",
+Menú infantil,Nuggets,26000,,"Pechuga de pollo apanada en panko con papas a la francesa",
+Menú infantil,Pastas,26000,,"Pastas cortas en salsa alfredo con pollo",
+Bebidas,Té Hatsu,9000,,Té Hatsu,
+Bebidas,Gaseosas,6000,,"Coca-Cola, ginger ale o soda",
+Bebidas,Agua,3000,,Agua 600 ml,
+Sodas,Sodas artesanales,12000,,"Fresa, maracuyá, frutos rojos o corozo",
+Cervezas,Cervezas nacionales,7000,,"Águila o Club Colombia",
+Cervezas,Cervezas importadas,11000,,"Corona o Stella Artois",
+Postres,Cheese Cake,18000,,Frutos rojos,
+Postres,Brownie,17000,,Brownie artesanal con helado de vainilla,
+Vinos,Las Moras Malbec (copa),19000,,Malbec, Argentina,
+Vinos,Marqués de León (copa),15000,,Tempranillo, España,
+Vinos,Las Moras Sauvignon Blanc (copa),17000,,Sauvignon Blanc, Argentina,
+Vinos,Las Moras Malbec (botella),80000,,Malbec, Argentina,
+Vinos,Marqués de León (botella),50000,,Tempranillo, España,
+Vinos,Las Moras Sauvignon Blanc (botella),80000,,Sauvignon Blanc, Argentina,
+Vinos,Marqués de Cáceres (botella),130000,,Crianza, España,
+Vinos,Riunite Lambrusco (botella),90000,,Lambrusco, Italia,
+Sangrías,Sangría tinta (copa),18000,,"Vino tinto y frutas",
+Sangrías,Sangría blanca (copa),18000,,"Vino blanco y frutas",
+Sangrías,Sangría tinta (jarra),80000,,"Vino tinto y frutas",
+Sangrías,Sangría blanca (jarra),80000,,"Vino blanco y frutas",

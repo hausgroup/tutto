@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 import {
   ACTIVE_RESTAURANT_COOKIE,
 } from "@/lib/auth/active-restaurant";
+import { revalidateRestaurantScopedPaths } from "@/lib/auth/revalidate-restaurant-scoped";
 import { resolveAuthContext } from "@/lib/auth/resolve-context";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { loginSchema } from "@/schemas/auth";
@@ -73,6 +74,8 @@ export async function switchRestaurantAction(
       httpOnly: true,
       maxAge: 60 * 60 * 24 * 365,
     });
+
+    revalidateRestaurantScopedPaths();
 
     return {};
   } catch {

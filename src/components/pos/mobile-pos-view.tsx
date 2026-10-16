@@ -32,10 +32,15 @@ import {
   adjustOrderProductQuantityAction,
   cancelTableReservationAction,
   moveBarDrinkUnitToWithMealAction,
+  getOrderCheckoutAction,
   releaseTableSessionAction,
   removeOrderLineAction,
-  sendOrderAction,
+  sendPosDraftAction,
 } from "@/lib/orders/actions";
+import {
+  applyOptimisticSendOrder,
+  pendingDraftLinesFromOrder,
+} from "@/lib/orders/pos-draft-sync";
 import { buildStationTicketPdfsFromOrder } from "@/lib/printing/build-station-ticket-pdfs";
 import { printStationTicketPdfPayload } from "@/lib/printing/browser-print";
 import {
@@ -45,6 +50,7 @@ import {
   reconcileOrderAfterServer,
 } from "@/lib/orders/optimistic";
 import { orderHasPendingBarDrinks } from "@/lib/orders/bar-delivery";
+import { resolveServeTiming } from "@/lib/orders/drink-serve";
 import {
   canMoveBarUnitToWithMeal,
   canRemoveLineFromPosTicket,
@@ -133,6 +139,43 @@ function stationLabel(station: string) {
   }
 }
 
+function salonHref(returnAreaId?: string) {
+  if (!returnAreaId?.trim()) return "/floor";
+  return `/floor?area=${encodeURIComponent(returnAreaId.trim())}`;
+}
+
+function pendingDraftSummary(order: Order): string {
+  return order.items
+    .filter((item) => item.status === "pending")
+    .map((item) => `${item.productId.slice(0, 8)}×${item.quantity}`)
+    .join(",");
+}
+
+// #region agent log
+function posDebugLog(
+  hypothesisId: string,
+  location: string,
+  message: string,
+  data: Record<string, unknown>,
+) {
+  fetch("http://127.0.0.1:7657/ingest/9c21ec7a-f83c-47b2-a116-b9a5d72f1fd1", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "X-Debug-Session-Id": "af00c9",
+    },
+    body: JSON.stringify({
+      sessionId: "af00c9",
+      hypothesisId,
+      location,
+      message,
+      data,
+      timestamp: Date.now(),
+    }),
+  }).catch(() => {});
+}
+// #endregion
+
 function shortName(fullName: string) {
   const parts = fullName.trim().split(/\s+/);
   if (parts.length === 0 || !parts[0]) return "Staff";
@@ -147,6 +190,7 @@ export function MobilePosView({
   attendantName,
   tableReservation = null,
   opening = false,
+  returnAreaId = "",
 }: {
   initialOrder: Order;
   catalog: CatalogSnapshot;
@@ -155,6 +199,8 @@ export function MobilePosView({
   tableReservation?: TableReservation | null;
   /** Table ticket still opening — UI is interactive chrome only. */
   opening?: boolean;
+  /** Floor zone to restore when leaving POS (from Salón URL). */
+  returnAreaId?: string;
 }) {
   const router = useRouter();
   const [order, setOrder] = useState(initialOrder);
@@ -164,8 +210,8 @@ export function MobilePosView({
   const [activeReservation, setActiveReservation] = useState(
     tableReservation ?? null,
   );
-  const [checkoutPending, startTransition] = useTransition();
-  const [sendPending, setSendPending] = useState(false);
+  const [reprintPending, setReprintPending] = useState(false);
+  const sendSyncInFlight = useRef(false);
   const [cancelReservationPending, startCancelReservation] = useTransition();
 
   useEffect(() => {
@@ -242,6 +288,8 @@ export function MobilePosView({
   orderRef.current = order;
   const catalogRef = useRef(catalog);
   catalogRef.current = catalog;
+  const attendantNameRef = useRef(attendantName);
+  attendantNameRef.current = attendantName;
   const wasOpening = useRef(opening);
   const ticketClosed = order.status === "completed";
   const hasSentBill = orderHasSentBill(order);
@@ -265,7 +313,11 @@ export function MobilePosView({
     delta: number,
     serveTiming?: DrinkServeTiming,
   ) {
-    const key = serverAdjustKey(productId, serveTiming);
+    const product = catalogRef.current.products.find((p) => p.id === productId);
+    const resolved = product
+      ? resolveServeTiming(product, catalogRef.current.categories, serveTiming)
+      : (serveTiming ?? null);
+    const key = serverAdjustKey(productId, resolved ?? undefined);
     const existing = pendingServerAdjusts.current.get(key);
     if (existing) {
       existing.delta += delta;
@@ -276,7 +328,54 @@ export function MobilePosView({
       pendingServerAdjusts.current.set(key, {
         productId,
         delta,
-        serveTiming,
+        serveTiming: resolved ?? undefined,
+      });
+    }
+  }
+
+  function coalesceAdjustBatch(
+    batch: Map<
+      string,
+      { productId: string; delta: number; serveTiming?: DrinkServeTiming }
+    >,
+  ) {
+    const out = new Map<
+      string,
+      { productId: string; delta: number; serveTiming?: DrinkServeTiming }
+    >();
+    for (const entry of batch.values()) {
+      mergePendingServerAdjustIntoMap(out, entry);
+    }
+    return out;
+  }
+
+  function mergePendingServerAdjustIntoMap(
+    map: Map<
+      string,
+      { productId: string; delta: number; serveTiming?: DrinkServeTiming }
+    >,
+    entry: { productId: string; delta: number; serveTiming?: DrinkServeTiming },
+  ) {
+    const product = catalogRef.current.products.find(
+      (p) => p.id === entry.productId,
+    );
+    const resolved = product
+      ? resolveServeTiming(
+          product,
+          catalogRef.current.categories,
+          entry.serveTiming,
+        )
+      : (entry.serveTiming ?? null);
+    const key = serverAdjustKey(entry.productId, resolved ?? undefined);
+    const existing = map.get(key);
+    if (existing) {
+      existing.delta += entry.delta;
+      if (existing.delta === 0) map.delete(key);
+    } else if (entry.delta !== 0) {
+      map.set(key, {
+        productId: entry.productId,
+        delta: entry.delta,
+        serveTiming: resolved ?? undefined,
       });
     }
   }
@@ -333,6 +432,16 @@ export function MobilePosView({
       pending,
       pendingMealMovesSnapshot(),
     );
+    // #region agent log
+    posDebugLog("C", "mobile-pos-view:applyServerOrder", "reconcile", {
+      orderId: server.id.slice(0, 8),
+      serverPending: pendingDraftSummary(serverBase),
+      pendingAdjusts: pending.map((p) => `${p.productId.slice(0, 8)}:${p.delta}`),
+      resultPending: pendingDraftSummary(next),
+      serverLines: serverBase.items.length,
+      resultLines: next.items.length,
+    });
+    // #endregion
     setOrder(next);
     return next;
   }
@@ -368,7 +477,9 @@ export function MobilePosView({
       .then(async () => {
         while (pendingServerAdjusts.current.size > 0) {
           const epochAtBatch = posSyncEpoch.current;
-          const batch = new Map(pendingServerAdjusts.current);
+          const batch = coalesceAdjustBatch(
+            new Map(pendingServerAdjusts.current),
+          );
           pendingServerAdjusts.current.clear();
           for (const entry of batch.values()) {
             if (entry.delta === 0) continue;
@@ -376,6 +487,11 @@ export function MobilePosView({
               continue;
             }
             if (epochAtBatch !== posSyncEpoch.current) {
+              mergePendingServerAdjust(
+                entry.productId,
+                entry.delta,
+                entry.serveTiming,
+              );
               continue;
             }
             const result = await adjustOrderProductQuantityAction({
@@ -394,6 +510,14 @@ export function MobilePosView({
               continue;
             }
             if (result.order && epochAtBatch === posSyncEpoch.current) {
+              // #region agent log
+              posDebugLog("D", "mobile-pos-view:flushAdjust", "server response", {
+                sentDelta: entry.delta,
+                productId: entry.productId.slice(0, 8),
+                serverTicket: pendingDraftSummary(result.order),
+                uiBefore: pendingDraftSummary(orderRef.current),
+              });
+              // #endregion
               applyServerOrder(result.order);
             }
           }
@@ -475,11 +599,26 @@ export function MobilePosView({
 
   // When the real ticket arrives, apply taps made while opening and sync once.
   useEffect(() => {
-    const justOpened = wasOpening.current && !opening;
+    const wasOpeningBefore = wasOpening.current;
+    const justOpened = wasOpeningBefore && !opening;
+    const justStartedOpening = !wasOpeningBefore && opening;
     wasOpening.current = opening;
 
-    if (opening) {
+    if (justStartedOpening) {
+      pendingDeltas.current = [];
+      pendingServerAdjusts.current.clear();
+      orderRef.current = initialOrder;
       setOrder(initialOrder);
+      // #region agent log
+      posDebugLog("A", "mobile-pos-view:openingEffect", "justStartedOpening", {
+        orderId: initialOrder.id.slice(0, 12),
+        items: pendingDraftSummary(initialOrder),
+      });
+      // #endregion
+      return;
+    }
+
+    if (opening) {
       return;
     }
 
@@ -487,6 +626,7 @@ export function MobilePosView({
 
     const queued = [...pendingDeltas.current];
     pendingDeltas.current = [];
+    const beforeReplay = pendingDraftSummary(orderRef.current);
 
     let next = initialOrder;
     for (const { productId, delta, serveTiming } of queued) {
@@ -498,12 +638,21 @@ export function MobilePosView({
         serveTiming,
       );
     }
+    orderRef.current = next;
     setOrder(next);
 
-    for (const { productId, delta, serveTiming } of queued) {
-      enqueueServerAdjust(productId, delta, serveTiming);
-    }
-    flushPendingMealMoves();
+    // #region agent log
+    posDebugLog("E", "mobile-pos-view:openingEffect", "justOpened replay", {
+      orderId: next.id.slice(0, 12),
+      queued: queued.map(
+        (q) => `${q.productId.slice(0, 8)}:${q.delta}:${q.serveTiming ?? ""}`,
+      ),
+      beforeReplay,
+      afterReplay: pendingDraftSummary(next),
+      initialItems: pendingDraftSummary(initialOrder),
+    });
+    // #endregion
+
   }, [opening, initialOrder]);
 
   useEffect(() => {
@@ -642,10 +791,38 @@ export function MobilePosView({
           serveTiming: resolvedTiming,
         });
       }
+      // #region agent log
+      posDebugLog("B", "mobile-pos-view:adjust", "opening queue", {
+        delta,
+        opening,
+        orderId: orderRef.current.id.slice(0, 12),
+        ticket: pendingDraftSummary(next),
+        pendingDeltas: pendingDeltas.current.map(
+          (p) => `${p.productId.slice(0, 8)}:${p.delta}`,
+        ),
+      });
+      // #endregion
       return;
     }
 
-    enqueueServerAdjust(productId, delta, resolvedTiming);
+    if (delta < 0 && qtyBefore === 0) {
+      // #region agent log
+      posDebugLog("B", "mobile-pos-view:adjust", "server enqueue sent", {
+        delta,
+        productId: productId.slice(0, 8),
+      });
+      // #endregion
+      enqueueServerAdjust(productId, delta, resolvedTiming);
+      return;
+    }
+
+    // #region agent log
+    posDebugLog("F", "mobile-pos-view:adjust", "local draft only", {
+      delta,
+      productId: productId.slice(0, 8),
+      ticket: pendingDraftSummary(next),
+    });
+    // #endregion
   }
 
   function requestAddProduct(product: Product, source = "card") {
@@ -713,7 +890,7 @@ export function MobilePosView({
       return;
     }
 
-    if (optimisticOnly) {
+    if (item.status === "pending" || optimisticOnly) {
       return;
     }
 
@@ -769,6 +946,7 @@ export function MobilePosView({
         source.id,
         catalog,
       );
+      orderRef.current = next;
       if (next.tableId) {
         patchCachedFloorPendingBarDrinks(
           next.tableId,
@@ -779,12 +957,6 @@ export function MobilePosView({
     });
 
     enqueuePendingMealMove(item.productId, item.id);
-
-    if (opening || orderRef.current.id.startsWith("opening-")) {
-      return;
-    }
-
-    flushPendingMealMoves();
   }
 
   function renderOrderLine(item: OrderItem, section: "main" | "withMeal") {
@@ -863,7 +1035,11 @@ export function MobilePosView({
     const payload = await buildStationTicketPdfsFromOrder(
       orderRef.current,
       catalogRef.current,
-      { itemIds, reprint },
+      {
+        itemIds,
+        reprint,
+        attendantName: attendantNameRef.current,
+      },
     );
     if (!payload) return false;
     await printStationTicketPdfPayload(payload);
@@ -871,78 +1047,109 @@ export function MobilePosView({
   }
 
   function reprintTickets() {
-    if (!canPrintTickets || opening || order.id.startsWith("opening-")) {
+    if (
+      !canPrintTickets ||
+      opening ||
+      order.id.startsWith("opening-") ||
+      reprintPending
+    ) {
       return;
     }
-    startTransition(async () => {
-      await syncQueue.current;
-      await runPrintOrderTickets(true);
-    });
+    void (async () => {
+      setReprintPending(true);
+      try {
+        await syncQueue.current;
+        await runPrintOrderTickets(true);
+      } finally {
+        setReprintPending(false);
+      }
+    })();
   }
 
   function sendToKitchen() {
-    if (opening || order.id.startsWith("opening-") || sendPending) return;
-    void (async () => {
-      setSendPending(true);
-      try {
-        await syncQueue.current;
-        const snapshot = orderRef.current;
-        const orderId = snapshot.id;
-        const itemIdsToPrint = snapshot.items
-          .filter((item) => item.status === "pending")
-          .map((item) => item.id);
+    if (opening || order.id.startsWith("opening-") || sendSyncInFlight.current) {
+      return;
+    }
+    sendSyncInFlight.current = true;
+    const snapshot = orderRef.current;
+    const orderId = snapshot.id;
+    const draftLines = pendingDraftLinesFromOrder(
+      snapshot,
+      catalogRef.current,
+    );
+    if (draftLines.length === 0) return;
 
-        const printPayloadPromise =
+    const itemIdsToPrint = filterDraftItems(snapshot.items).map(
+      (item) => item.id,
+    );
+
+    const optimistic = applyOptimisticSendOrder(snapshot);
+    orderRef.current = optimistic;
+    setOrder(optimistic);
+    setMobilePhase("menu");
+    pendingServerAdjusts.current.clear();
+
+    if (optimistic.tableId) {
+      const bill = orderHasSentBill(optimistic);
+      patchCachedFloorTableStatus(
+        optimistic.tableId,
+        floorSalonStatusFromPos(bill, activeReservation != null),
+      );
+      patchCachedFloorBillTotal(
+        optimistic.tableId,
+        bill ? optimistic.totalMinor : 0,
+      );
+      patchCachedFloorPendingBarDrinks(
+        optimistic.tableId,
+        bill && orderHasPendingBarDrinks(optimistic),
+      );
+    }
+
+    void (async () => {
+      try {
+        const payload =
           itemIdsToPrint.length > 0
-            ? buildStationTicketPdfsFromOrder(
+            ? await buildStationTicketPdfsFromOrder(
                 snapshot,
                 catalogRef.current,
-                { itemIds: itemIdsToPrint },
+                {
+                  itemIds: itemIdsToPrint,
+                  attendantName: attendantNameRef.current,
+                },
               )
             : null;
+        if (payload) await printStationTicketPdfPayload(payload);
+      } catch {
+        toast.error("No pudimos imprimir los tickets.");
+      }
+    })();
 
-        const result = await sendOrderAction(orderId);
+    void (async () => {
+      try {
+        const result = await sendPosDraftAction({ orderId, lines: draftLines });
         if (result.error) {
+          orderRef.current = snapshot;
+          setOrder(snapshot);
           toast.error(result.error);
           return;
         }
-
-        const synced = result.order ?? orderRef.current;
-        if (result.order) setOrder(result.order);
-        setMobilePhase("menu");
-        if (synced.tableId) {
-          const bill = orderHasSentBill(synced);
-          patchCachedFloorTableStatus(
-            synced.tableId,
-            floorSalonStatusFromPos(bill, activeReservation != null),
-          );
-          patchCachedFloorBillTotal(
-            synced.tableId,
-            bill ? synced.totalMinor : 0,
-          );
-          patchCachedFloorPendingBarDrinks(
-            synced.tableId,
-            bill && orderHasPendingBarDrinks(synced),
-          );
-        }
-
-        if (printPayloadPromise) {
-          try {
-            const payload = await printPayloadPromise;
-            if (payload) await printStationTicketPdfPayload(payload);
-          } catch {
-            toast.error("No pudimos imprimir los tickets.");
+        if (result.order) {
+          orderRef.current = result.order;
+          setOrder(result.order);
+          if (result.order.tableId) {
+            setCachedPosOrder(result.order.tableId, result.order);
           }
         }
       } finally {
-        setSendPending(false);
+        sendSyncInFlight.current = false;
       }
     })();
   }
 
   function openCheckout() {
     if (opening || order.id.startsWith("opening-")) return;
-    void syncQueue.current.then(() => setCheckoutOpen(true));
+    setCheckoutOpen(true);
+    void syncQueue.current;
   }
 
   function handleCheckoutCompleted() {
@@ -953,7 +1160,7 @@ export function MobilePosView({
       patchCachedFloorPendingBarDrinks(order.tableId, false);
     }
     refreshFloorBootInBackground();
-    router.push("/floor");
+    router.push(salonHref(returnAreaId));
   }
 
   function goToSalon() {
@@ -974,7 +1181,7 @@ export function MobilePosView({
     }
 
     refreshFloorBootInBackground();
-    router.push("/floor");
+    router.push(salonHref(returnAreaId));
 
     if (tableId && !orderHasSentBill(current)) {
       void releaseTableSessionAction(tableId).then((result) => {
@@ -990,9 +1197,15 @@ export function MobilePosView({
 
   // Prefetch salon while working a table.
   useEffect(() => {
-    router.prefetch("/floor");
+    router.prefetch(salonHref(returnAreaId));
     void warmFloorBoot();
-  }, [router]);
+  }, [router, returnAreaId]);
+
+  useEffect(() => {
+    if (opening || order.id.startsWith("opening-")) return;
+    if (sessionBill.totalMinor <= 0) return;
+    void getOrderCheckoutAction(order.id);
+  }, [opening, order.id, sessionBill.totalMinor]);
 
   return (
     <div
@@ -1305,9 +1518,9 @@ export function MobilePosView({
               order.id.startsWith("opening-") ||
               (hasDraftToSend
                 ? false
-                : sessionBill.totalMinor === 0 || checkoutPending || sendPending)
+                : sessionBill.totalMinor === 0)
             }
-            loading={opening || checkoutPending || sendPending}
+            loading={opening}
             onClick={primaryAction}
           >
             {hasDraftToSend
@@ -1323,8 +1536,8 @@ export function MobilePosView({
         batches={sessionBatches}
         totalMinor={sessionBill.totalMinor}
         canReprintTickets={canPrintTickets}
-        reprintDisabled={opening || checkoutPending}
-        reprintLoading={checkoutPending}
+        reprintDisabled={opening || reprintPending}
+        reprintLoading={reprintPending}
         onReprintTickets={reprintTickets}
       />
 

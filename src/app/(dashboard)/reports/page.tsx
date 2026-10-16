@@ -22,7 +22,11 @@ export default async function ReportsPage() {
   return (
     <>
       <ReportsPageHeader />
-      <ReportsDashboard reports={reports} siigoPending={siigoPending} />
+      <ReportsDashboard
+        key={restaurantId}
+        reports={reports}
+        siigoPending={siigoPending}
+      />
     </>
   );
 }

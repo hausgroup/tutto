@@ -168,6 +168,17 @@ describe("applyOptimisticQuantityDelta", () => {
 });
 
 describe("linesMatchForQuantityAdjust", () => {
+  it("merges immediate adds into a null-timing pending line", () => {
+    expect(
+      linesMatchForQuantityAdjust(
+        barItem({ serveTiming: null, status: "pending" }),
+        "p1",
+        "immediate",
+        1,
+      ),
+    ).toBe(true);
+  });
+
   it("allows removing sent with-meal lines", () => {
     expect(
       linesMatchForQuantityAdjust(

@@ -11,7 +11,10 @@ import {
   linesMatchForQuantityAdjust,
   resolveServeTiming,
 } from "@/lib/orders/drink-serve";
-import { consolidateWithMealOrderLines } from "@/lib/orders/consolidate-lines";
+import {
+  consolidateEnseguidaPendingLines,
+  consolidateWithMealOrderLines,
+} from "@/lib/orders/consolidate-lines";
 import type { DrinkServeTiming, Order, OrderItem } from "@/lib/orders/types";
 
 export type PendingQtyAdjust = {
@@ -37,6 +40,32 @@ function withRecalculatedTotals(order: Order): Order {
   const next = { ...order };
   recalculateOrderBillTotals(next);
   return next;
+}
+
+function coalescePendingAdjusts(
+  entries: PendingQtyAdjust[],
+  catalog: CatalogSnapshot,
+): PendingQtyAdjust[] {
+  const merged = new Map<string, PendingQtyAdjust>();
+  for (const entry of entries) {
+    if (entry.delta === 0) continue;
+    const product = catalog.products.find((p) => p.id === entry.productId);
+    const resolved = product
+      ? resolveServeTiming(product, catalog.categories, entry.serveTiming)
+      : (entry.serveTiming ?? null);
+    const key = `${entry.productId}|${resolved ?? ""}`;
+    const prev = merged.get(key);
+    if (prev) {
+      prev.delta += entry.delta;
+    } else {
+      merged.set(key, {
+        productId: entry.productId,
+        delta: entry.delta,
+        serveTiming: resolved ?? undefined,
+      });
+    }
+  }
+  return [...merged.values()].filter((entry) => entry.delta !== 0);
 }
 
 function recalcLine(item: OrderItem, quantity: number): OrderItem {
@@ -100,9 +129,11 @@ export function reconcileOrderAfterServer(
 ): Order {
   let order: Order = {
     ...server,
-    items: consolidateWithMealOrderLines([...server.items]),
+    items: consolidateEnseguidaPendingLines(
+      consolidateWithMealOrderLines([...server.items]),
+    ),
   };
-  for (const entry of pendingAdjusts) {
+  for (const entry of coalescePendingAdjusts(pendingAdjusts, catalog)) {
     if (entry.delta === 0) continue;
     order = applyOptimisticQuantityDelta(
       order,
@@ -113,7 +144,12 @@ export function reconcileOrderAfterServer(
     );
   }
   order = applyPendingMealMovesOnOrder(order, catalog, pendingMealMoves);
-  return order;
+  return withRecalculatedTotals({
+    ...order,
+    items: consolidateEnseguidaPendingLines(
+      consolidateWithMealOrderLines(order.items),
+    ),
+  });
 }
 
 /** Instant client-side quantity change while the server catches up. */
@@ -176,7 +212,7 @@ export function applyOptimisticQuantityDelta(
     return withRecalculatedTotals({
       ...order,
       items: dedupeOrderItemsById(
-        consolidateWithMealOrderLines(items),
+        consolidateEnseguidaPendingLines(consolidateWithMealOrderLines(items)),
       ),
       status: deriveOrderStatusFromItems(items, order.status),
     });

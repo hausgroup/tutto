@@ -35,6 +35,7 @@ export function CatalogSearchField({
       <Input
         type="text"
         role="searchbox"
+        capitalize="off"
         inputMode="search"
         autoComplete="off"
         data-pill

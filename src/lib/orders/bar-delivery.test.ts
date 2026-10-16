@@ -27,18 +27,38 @@ function barItem(overrides: Partial<OrderItem> = {}): OrderItem {
 }
 
 describe("itemHasPendingBarDelivery", () => {
-  it("flags undelivered bar lines", () => {
-    expect(itemHasPendingBarDelivery(barItem({ status: "sent" }))).toBe(true);
-    expect(itemHasPendingBarDelivery(barItem({ status: "ready" }))).toBe(true);
+  it("flags undelivered with-meal bar lines", () => {
+    expect(
+      itemHasPendingBarDelivery(
+        barItem({ status: "sent", serveTiming: "with_meal" }),
+      ),
+    ).toBe(true);
+    expect(
+      itemHasPendingBarDelivery(
+        barItem({ status: "ready", serveTiming: "with_meal" }),
+      ),
+    ).toBe(true);
+  });
+
+  it("ignores enseguida bar lines", () => {
+    expect(
+      itemHasPendingBarDelivery(
+        barItem({ status: "sent", serveTiming: "immediate" }),
+      ),
+    ).toBe(false);
   });
 
   it("ignores delivered, cancelled, and kitchen lines", () => {
-    expect(itemHasPendingBarDelivery(barItem({ status: "delivered" }))).toBe(
-      false,
-    );
-    expect(itemHasPendingBarDelivery(barItem({ status: "pending" }))).toBe(
-      false,
-    );
+    expect(
+      itemHasPendingBarDelivery(
+        barItem({ status: "delivered", serveTiming: "with_meal" }),
+      ),
+    ).toBe(false);
+    expect(
+      itemHasPendingBarDelivery(
+        barItem({ status: "pending", serveTiming: "with_meal" }),
+      ),
+    ).toBe(false);
     expect(itemHasPendingBarDelivery(barItem({ status: "cancelled" }))).toBe(
       false,
     );
@@ -54,12 +74,15 @@ describe("orderHasPendingBarDrinks", () => {
   it("detects when any bar item is outstanding", () => {
     expect(
       orderHasPendingBarDrinks({
-        items: [barItem(), barItem({ preparationStation: "kitchen" })],
+        items: [
+          barItem({ serveTiming: "with_meal" }),
+          barItem({ preparationStation: "kitchen" }),
+        ],
       }),
     ).toBe(true);
     expect(
       orderHasPendingBarDrinks({
-        items: [barItem({ status: "delivered" })],
+        items: [barItem({ status: "delivered", serveTiming: "with_meal" })],
       }),
     ).toBe(false);
   });

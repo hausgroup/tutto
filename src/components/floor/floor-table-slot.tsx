@@ -18,6 +18,14 @@ import { formatCurrency } from "@/lib/utils/money";
 
 export const DRAG_MIME = "application/x-haus-table-id";
 
+function reserveWiggleDelayMs(tableId: string): number {
+  let hash = 0;
+  for (let i = 0; i < tableId.length; i++) {
+    hash = (hash + tableId.charCodeAt(i) * 13) % 280;
+  }
+  return hash;
+}
+
 function showsOpenBill(status: TableStatus) {
   return (
     status === "occupied" ||
@@ -73,11 +81,15 @@ export function FloorTableSlot({
   onWarm,
   /** Checkmark on the white table surface (reserve pick or plan editor). */
   reservePickSelected = false,
+  /** Salón reserve mode: subtle wiggle like iOS edit mode. */
+  reservePickMode = false,
   allowInactive = false,
   draggable = false,
   isDragging = false,
   billTotalMinor,
   pendingBarDrinks = false,
+  onDeliverPendingWithMealDrinks,
+  deliveringWithMealDrinks = false,
   busy = false,
   /** Layout editor: ignore operational status — chairs/bar stay grey. */
   neutralAppearance = false,
@@ -87,12 +99,15 @@ export function FloorTableSlot({
   onSelect?: (table: RestaurantTable) => void;
   onWarm?: (table: RestaurantTable) => void;
   reservePickSelected?: boolean;
+  reservePickMode?: boolean;
   allowInactive?: boolean;
   draggable?: boolean;
   isDragging?: boolean;
   billTotalMinor?: number | null;
-  /** Open ticket has bar items not yet delivered to the table. */
+  /** Bebidas “con la comida” enviadas y pendientes de llevar a la mesa. */
   pendingBarDrinks?: boolean;
+  onDeliverPendingWithMealDrinks?: (table: RestaurantTable) => void;
+  deliveringWithMealDrinks?: boolean;
   busy?: boolean;
   neutralAppearance?: boolean;
   className?: string;
@@ -159,13 +174,28 @@ export function FloorTableSlot({
           : `Mesa ${table.label}, ${salon.label}, capacidad ${table.capacity}${
               reservePickSelected ? ", seleccionada para reservar" : ""
             }${showBill ? `, cuenta ${formatCurrency(billTotalMinor)}` : ""}${
-              showPendingDrinks ? ", bebidas pendientes de entregar" : ""
+              showPendingDrinks
+                ? ", bebidas con la comida pendientes de entregar"
+                : ""
             }`
       }
       aria-busy={busy}
       aria-pressed={reservePickSelected}
     >
-      <div className="relative size-full select-none">
+      <div
+        className={cn(
+          "relative size-full select-none",
+          reservePickMode &&
+            !disabled &&
+            !busy &&
+            "salon-table-wiggle motion-reduce:animate-none",
+        )}
+        style={
+          reservePickMode && !disabled && !busy
+            ? { animationDelay: `${reserveWiggleDelayMs(table.id)}ms` }
+            : undefined
+        }
+      >
         {chairs.map((chair, index) => (
           <div
             key={`${table.id}-chair-${index}`}
@@ -184,17 +214,24 @@ export function FloorTableSlot({
             surfaceClass,
             !disabled &&
               !busy &&
+              !reservePickMode &&
               "[@media(hover:hover)]:group-hover:scale-[1.04] group-active:scale-[0.98]",
           )}
         >
           {showPendingDrinks ? (
-            <span
-              className="absolute right-1.5 top-1.5 z-[5] flex size-5 items-center justify-center rounded-full bg-zinc-200/90 text-zinc-500 dark:bg-zinc-600/40 dark:text-zinc-400"
-              title="Bebidas pendientes de entregar"
+            <button
+              type="button"
+              className="absolute right-1.5 top-1.5 z-[5] flex size-5 items-center justify-center rounded-full bg-zinc-200/90 text-zinc-500 transition-colors hover:bg-zinc-300/95 disabled:opacity-60 dark:bg-zinc-600/40 dark:text-zinc-400 dark:hover:bg-zinc-600/60"
+              title="Marcar bebidas con la comida como entregadas en la mesa"
+              aria-label="Marcar bebidas con la comida como entregadas en la mesa"
+              disabled={deliveringWithMealDrinks || !onDeliverPendingWithMealDrinks}
+              onClick={(event) => {
+                event.stopPropagation();
+                onDeliverPendingWithMealDrinks?.(table);
+              }}
             >
               <Wine className="size-3" aria-hidden />
-              <span className="sr-only">Bebidas pendientes de entregar</span>
-            </span>
+            </button>
           ) : null}
           {reservePickSelected ? (
             <span

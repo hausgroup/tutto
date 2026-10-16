@@ -162,6 +162,70 @@ export async function releaseTableSessionAction(
   }
 }
 
+export async function deliverWithMealBarDrinksAtTableAction(input: {
+  restaurantId: string;
+  tableId: string;
+}): Promise<PosActionState & { deliveredCount?: number }> {
+  try {
+    const context = await resolveAuthContext();
+    const deliveredCount = await orderService.deliverWithMealBarDrinksAtTable(
+      context,
+      input.restaurantId,
+      input.tableId,
+    );
+    revalidateFloorSurfaces();
+    return { ok: true, deliveredCount };
+  } catch (error) {
+    return mapError(error);
+  }
+}
+
+export async function syncPendingDraftAction(input: {
+  orderId: string;
+  lines: Array<{
+    productId: string;
+    quantity: number;
+    serveTiming?: "immediate" | "with_meal" | null;
+  }>;
+}): Promise<PosActionState> {
+  try {
+    const context = await resolveAuthContext();
+    const restaurantId = getDefaultRestaurantId(context);
+    if (!restaurantId) throw new Error("RESTAURANT_NOT_FOUND");
+    const order = await orderService.syncPendingDraft(context, {
+      restaurantId,
+      orderId: input.orderId,
+      lines: input.lines,
+    });
+    return { ok: true, order };
+  } catch (error) {
+    return mapError(error);
+  }
+}
+
+export async function sendPosDraftAction(input: {
+  orderId: string;
+  lines: Array<{
+    productId: string;
+    quantity: number;
+    serveTiming?: "immediate" | "with_meal" | null;
+  }>;
+}): Promise<PosActionState> {
+  try {
+    const context = await resolveAuthContext();
+    const restaurantId = getDefaultRestaurantId(context);
+    if (!restaurantId) throw new Error("RESTAURANT_NOT_FOUND");
+    const order = await orderService.sendPosDraft(context, {
+      restaurantId,
+      orderId: input.orderId,
+      lines: input.lines,
+    });
+    return { ok: true, order };
+  } catch (error) {
+    return mapError(error);
+  }
+}
+
 export async function sendOrderAction(orderId: string): Promise<PosActionState> {
   try {
     const context = await resolveAuthContext();

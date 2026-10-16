@@ -25,6 +25,7 @@ import {
   type AuthContext,
 } from "@/lib/auth/permissions";
 import { adminNav, operationNav, type AppNavItem } from "@/lib/navigation";
+import { NavRoutePrefetch } from "@/components/layout/nav-route-prefetch";
 import { RestaurantSwitcher } from "@/components/layout/restaurant-switcher";
 
 function NavItems({
@@ -43,7 +44,7 @@ function NavItems({
         }
         tooltip={item.title}
       >
-        <Link href={item.soon ? "/floor" : item.href}>
+        <Link href={item.soon ? "/floor" : item.href} prefetch={!item.soon}>
           <item.icon />
           <span>{item.title}</span>
           {item.soon ? (
@@ -88,6 +89,7 @@ export function AppSidebar({ auth }: { auth: AuthContext }) {
 
   return (
     <Sidebar variant="inset" collapsible="icon">
+      <NavRoutePrefetch />
       <SidebarHeader>
         <RestaurantSwitcher auth={auth} />
       </SidebarHeader>

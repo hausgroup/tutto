@@ -137,15 +137,18 @@ export function PosClientEntry({
   const tableReservation =
     boot?.tableReservation ?? tableReservationFromFloorCache(tableId);
 
+  const placeholderOrderForTable = useMemo(
+    () => placeholderOrder(tableId, tableLabel, restaurantId),
+    [tableId, tableLabel, restaurantId],
+  );
+
   if (!catalog || !restaurantId) {
     return <PosLoadingShell tableLabel={tableLabel} />;
   }
 
   return (
     <MobilePosView
-      initialOrder={
-        boot?.order ?? placeholderOrder(tableId, tableLabel, restaurantId)
-      }
+      initialOrder={boot?.order ?? placeholderOrderForTable}
       catalog={catalog}
       tableLabel={boot?.tableLabel || tableLabel}
       attendantName={attendantName}

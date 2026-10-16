@@ -11,16 +11,22 @@ export function FloorMobileTableList({
   onWarm,
   billTotalsByTableId,
   pendingBarDrinksByTableId,
+  deliveringWithMealDrinksTableId = null,
+  onDeliverPendingWithMealDrinks,
   openingTableId = null,
   highlightedTableIds,
+  reservePickMode = false,
 }: {
   tables: RestaurantTable[];
   onSelect: (table: RestaurantTable) => void;
   onWarm?: (table: RestaurantTable) => void;
   billTotalsByTableId?: Record<string, number>;
   pendingBarDrinksByTableId?: Record<string, true>;
+  deliveringWithMealDrinksTableId?: string | null;
+  onDeliverPendingWithMealDrinks?: (table: RestaurantTable) => void;
   openingTableId?: string | null;
   highlightedTableIds?: ReadonlySet<string> | string[];
+  reservePickMode?: boolean;
 }) {
   const highlighted =
     highlightedTableIds instanceof Set
@@ -45,8 +51,13 @@ export function FloorMobileTableList({
             onWarm={onWarm}
             billTotalMinor={billTotalsByTableId?.[table.id]}
             pendingBarDrinks={Boolean(pendingBarDrinksByTableId?.[table.id])}
+            onDeliverPendingWithMealDrinks={onDeliverPendingWithMealDrinks}
+            deliveringWithMealDrinks={
+              deliveringWithMealDrinksTableId === table.id
+            }
             busy={openingTableId === table.id}
             reservePickSelected={Boolean(highlighted?.has(table.id))}
+            reservePickMode={reservePickMode}
           />
         </div>
       ))}

@@ -16,14 +16,27 @@ import { useIsMobile } from "@/hooks/use-mobile";
 import { warmPosCatalog, warmPosTable } from "@/lib/pos/client-cache";
 import { persistStaffNameForTable } from "@/lib/pos/staff-attendant";
 import { effectiveOperationalStatus } from "@/lib/floor/status";
-import { refreshFloorBootInBackground } from "@/lib/floor/client-cache";
+import {
+  patchCachedFloorPendingBarDrinks,
+  refreshFloorBootInBackground,
+} from "@/lib/floor/client-cache";
+import { deliverWithMealBarDrinksAtTableAction } from "@/lib/orders/actions";
+import { capitalizeWordsInInput } from "@/lib/utils/capitalize-input";
 import { cn } from "@/lib/utils";
 
-function posHref(table: RestaurantTable, staffName?: string) {
+const STAFF_PROMPT_VISUAL = "/visuals/staff-attendant-hero.png";
+
+function posHref(
+  table: RestaurantTable,
+  staffName?: string,
+  floorAreaId?: string,
+) {
   const params = new URLSearchParams();
   params.set("t", table.label);
   const staff = staffName?.trim();
   if (staff) params.set("staff", staff);
+  const area = floorAreaId?.trim();
+  if (area) params.set("area", area);
   return `/pos/${table.id}?${params.toString()}`;
 }
 
@@ -47,16 +60,25 @@ function canReserveTable(
 }
 
 export function FloorPlanView({
+  restaurantId,
   snapshot,
   billTotalsByTableId = {},
   pendingBarDrinksByTableId = {},
+  onPendingBarDrinksChange,
   reservePickActive = false,
   onReservePickActiveChange,
+  initialAreaId,
   className,
 }: {
+  restaurantId: string;
   snapshot: FloorSnapshot;
+  initialAreaId?: string;
   billTotalsByTableId?: Record<string, number>;
   pendingBarDrinksByTableId?: Record<string, true>;
+  onPendingBarDrinksChange?: (
+    tableId: string,
+    pending: boolean,
+  ) => void;
   reservePickActive?: boolean;
   onReservePickActiveChange?: (active: boolean) => void;
   className?: string;
@@ -71,16 +93,58 @@ export function FloorPlanView({
   const [selectedReserveIds, setSelectedReserveIds] = useState<Set<string>>(
     () => new Set(),
   );
-  const [activeAreaId, setActiveAreaId] = useState(
-    snapshot.areas[0]?.id ?? "",
-  );
+  const [activeAreaId, setActiveAreaId] = useState(() => {
+    const fallback = snapshot.areas[0]?.id ?? "";
+    if (
+      initialAreaId &&
+      snapshot.areas.some((area) => area.id === initialAreaId)
+    ) {
+      return initialAreaId;
+    }
+    return fallback;
+  });
   const [staffPromptTable, setStaffPromptTable] =
     useState<RestaurantTable | null>(null);
   const [staffNameInput, setStaffNameInput] = useState("");
+  const [deliveringWithMealTableId, setDeliveringWithMealTableId] = useState<
+    string | null
+  >(null);
 
   useEffect(() => {
     setLiveSnapshot(snapshot);
   }, [snapshot]);
+
+  useEffect(() => {
+    if (
+      !initialAreaId ||
+      !snapshot.areas.some((area) => area.id === initialAreaId)
+    ) {
+      return;
+    }
+    setActiveAreaId(initialAreaId);
+  }, [initialAreaId, snapshot.areas]);
+
+  function deliverWithMealDrinksAtTable(table: RestaurantTable) {
+    startTransition(async () => {
+      setDeliveringWithMealTableId(table.id);
+      onPendingBarDrinksChange?.(table.id, false);
+      patchCachedFloorPendingBarDrinks(table.id, false);
+      const result = await deliverWithMealBarDrinksAtTableAction({
+        restaurantId,
+        tableId: table.id,
+      });
+      setDeliveringWithMealTableId(null);
+      if (result.error) {
+        toast.error(result.error);
+        refreshFloorBootInBackground();
+        return;
+      }
+      if ((result.deliveredCount ?? 0) > 0) {
+        toast.success("Bebidas con la comida marcadas como entregadas.");
+      }
+      refreshFloorBootInBackground();
+    });
+  }
 
   useEffect(() => {
     if (!reservePickActive) {
@@ -123,13 +187,13 @@ export function FloorPlanView({
     void warmPosCatalog();
     for (const table of liveSnapshot.tables) {
       if (!table.isActive) continue;
-      router.prefetch(posHref(table));
+      router.prefetch(posHref(table, undefined, activeAreaId));
     }
-  }, [router, liveSnapshot.tables]);
+  }, [router, liveSnapshot.tables, activeAreaId]);
 
   function warmTable(table: RestaurantTable) {
     void warmPosTable(table.id).catch(() => {});
-    router.prefetch(posHref(table));
+    router.prefetch(posHref(table, undefined, activeAreaId));
   }
 
   function openPos(table: RestaurantTable, staffName?: string) {
@@ -138,7 +202,7 @@ export function FloorPlanView({
       persistStaffNameForTable(table.id, staffName);
     }
     void warmPosTable(table.id).catch(() => {});
-    router.push(posHref(table, staffName));
+    router.push(posHref(table, staffName, activeAreaId));
   }
 
   function beginOpenPos(table: RestaurantTable) {
@@ -152,7 +216,7 @@ export function FloorPlanView({
 
   function confirmStaffAndOpenPos() {
     const table = staffPromptTable;
-    const name = staffNameInput.trim();
+    const name = capitalizeWordsInInput(staffNameInput.trim());
     if (!table) return;
     if (!name) {
       toast.error("Escribe tu nombre para abrir la mesa.");
@@ -253,8 +317,11 @@ export function FloorPlanView({
               onWarm={warmTable}
               billTotalsByTableId={billTotalsByTableId}
               pendingBarDrinksByTableId={pendingBarDrinksByTableId}
+              deliveringWithMealDrinksTableId={deliveringWithMealTableId}
+              onDeliverPendingWithMealDrinks={deliverWithMealDrinksAtTable}
               openingTableId={openingId}
               highlightedTableIds={selectedReserveIds}
+              reservePickMode={reservePickActive}
             />
           </div>
         ) : areas.length > 0 ? (
@@ -264,8 +331,11 @@ export function FloorPlanView({
             onWarm={warmTable}
             billTotalsByTableId={billTotalsByTableId}
             pendingBarDrinksByTableId={pendingBarDrinksByTableId}
+            deliveringWithMealDrinksTableId={deliveringWithMealTableId}
+            onDeliverPendingWithMealDrinks={deliverWithMealDrinksAtTable}
             openingTableId={openingId}
             highlightedTableIds={selectedReserveIds}
+            reservePickMode={reservePickActive}
             className="min-h-0 flex-1"
           />
         ) : null}
@@ -327,39 +397,74 @@ export function FloorPlanView({
           if (!open) setStaffPromptTable(null);
         }}
       >
-        <DialogContent showCloseButton={false} className="gap-3 sm:max-w-xs">
-          <DialogTitle className="text-sm font-normal text-muted-foreground">
-            Atiende
-          </DialogTitle>
-          <Input
-            value={staffNameInput}
-            onChange={(event) => setStaffNameInput(event.target.value)}
-            placeholder="Nombre"
-            aria-label="Nombre"
-            autoFocus
-            onKeyDown={(event) => {
-              if (event.key === "Enter") {
-                event.preventDefault();
-                confirmStaffAndOpenPos();
-              }
-            }}
-          />
-          <div className="flex justify-end gap-2">
-            <Button
-              type="button"
-              variant="secondary"
-              onClick={() => setStaffPromptTable(null)}
-            >
-              Cancelar
-            </Button>
-            <Button
-              type="button"
-              variant="primary"
-              disabled={!staffNameInput.trim()}
-              onClick={confirmStaffAndOpenPos}
-            >
-              Abrir mesa
-            </Button>
+        <DialogContent
+          showCloseButton={false}
+          className="gap-0 overflow-hidden p-0 sm:max-w-[22rem]"
+        >
+          <div
+            className={cn(
+              "mx-4 mt-4 flex items-center justify-center rounded-[8px] bg-muted/60 py-4",
+              "dark:bg-muted/35",
+            )}
+          >
+            <img
+              src={STAFF_PROMPT_VISUAL}
+              alt=""
+              aria-hidden
+              className="h-[9.25rem] w-auto max-w-full object-contain sm:h-[10rem]"
+              width={224}
+              height={224}
+            />
+          </div>
+
+          <div className="flex flex-col gap-4 px-5 pb-5 pt-4">
+            <div className="space-y-1">
+              <DialogTitle className="text-lg font-semibold leading-tight tracking-tight text-foreground">
+                {staffPromptTable
+                  ? `Mesa ${staffPromptTable.label}`
+                  : "Abrir mesa"}
+              </DialogTitle>
+              <p className="text-sm leading-snug text-muted-foreground">
+                Escribe el nombre de quien atiende. Aparecerá en el ticket de
+                cocina y barra.
+              </p>
+            </div>
+
+            <Input
+              value={staffNameInput}
+              onChange={(event) => setStaffNameInput(event.target.value)}
+              placeholder="Nombre del mesero"
+              aria-label="Nombre de quien atiende la mesa"
+              autoFocus
+              autoComplete="name"
+              className="h-12 text-base"
+              onKeyDown={(event) => {
+                if (event.key === "Enter") {
+                  event.preventDefault();
+                  confirmStaffAndOpenPos();
+                }
+              }}
+            />
+
+            <div className="flex gap-2 pt-0.5">
+              <Button
+                type="button"
+                variant="secondary"
+                className="flex-1"
+                onClick={() => setStaffPromptTable(null)}
+              >
+                Cancelar
+              </Button>
+              <Button
+                type="button"
+                variant="primary"
+                className="flex-1"
+                disabled={!staffNameInput.trim()}
+                onClick={confirmStaffAndOpenPos}
+              >
+                Abrir mesa
+              </Button>
+            </div>
           </div>
         </DialogContent>
       </Dialog>

@@ -229,3 +229,30 @@ html[data-standalone="true"] [data-slot="sidebar-wrapper"] {
     min-height: -webkit-fill-available;
   }
 }
+
+/* Salón: gentle iOS-style wiggle while picking tables to reserve */
+@keyframes salon-table-wiggle {
+  0% {
+    transform: rotate(-1.1deg);
+  }
+  33% {
+    transform: rotate(0.9deg) translateY(-0.4px);
+  }
+  66% {
+    transform: rotate(1.1deg);
+  }
+  100% {
+    transform: rotate(-0.9deg) translateY(0.4px);
+  }
+}
+
+.salon-table-wiggle {
+  animation: salon-table-wiggle 0.36s ease-in-out infinite;
+  transform-origin: 50% 52%;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .salon-table-wiggle {
+    animation: none;
+  }
+}

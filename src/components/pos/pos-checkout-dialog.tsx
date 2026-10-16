@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState, useTransition } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import {
   Banknote,
@@ -108,7 +108,8 @@ export function PosCheckoutDialog({
   onOrderUpdated: (order: Order) => void;
   onOrderCompleted: () => void;
 }) {
-  const [pending, startTransition] = useTransition();
+  const [summaryLoading, setSummaryLoading] = useState(false);
+  const [payPending, setPayPending] = useState(false);
   const [checkoutTab, setCheckoutTab] = useState<"full" | "split">("full");
   const [guestCount, setGuestCount] = useState(2);
   const [assignment, setAssignment] = useState<Record<string, string>>({});
@@ -133,28 +134,40 @@ export function PosCheckoutDialog({
     return map;
   }, [guests]);
 
-  function refreshCheckoutSummary() {
-    startTransition(async () => {
+  const summaryRequestId = useRef(0);
+
+  async function refreshCheckoutSummary() {
+    const requestId = ++summaryRequestId.current;
+    setSummaryLoading(true);
+    try {
       const result = await getOrderCheckoutAction(order.id);
+      if (requestId !== summaryRequestId.current) return;
       if (result.error) {
         toast.error(result.error);
         return;
       }
       setPaidMinor(result.paidMinor ?? 0);
       setRemainingMinor(
-        result.remainingMinor ?? Math.max(0, billTotalMinor - (result.paidMinor ?? 0)),
+        result.remainingMinor ??
+          Math.max(0, billTotalMinor - (result.paidMinor ?? 0)),
       );
-    });
+    } finally {
+      if (requestId === summaryRequestId.current) {
+        setSummaryLoading(false);
+      }
+    }
   }
 
   useEffect(() => {
     if (!open) {
       setPayTarget(null);
       setCheckoutTab("full");
+      setPayPending(false);
       return;
     }
+    setPaidMinor(0);
     setRemainingMinor(billTotalMinor);
-    refreshCheckoutSummary();
+    void refreshCheckoutSummary();
   }, [open, order.id, billTotalMinor]);
 
   function guestLabelForItem(item: OrderItem) {
@@ -170,9 +183,10 @@ export function PosCheckoutDialog({
     setAssignment((prev) => ({ ...prev, [item.id]: next }));
   }
 
-  function registerPayment(methodCode: string) {
-    if (!payTarget || payTarget.amountMinor <= 0) return;
-    startTransition(async () => {
+  async function registerPayment(methodCode: string) {
+    if (!payTarget || payTarget.amountMinor <= 0 || payPending) return;
+    setPayPending(true);
+    try {
       const result = await payOrderAction({
         orderId: order.id,
         methodCode,
@@ -196,7 +210,9 @@ export function PosCheckoutDialog({
         onOrderCompleted();
         onOpenChange(false);
       }
-    });
+    } finally {
+      setPayPending(false);
+    }
   }
 
   return (
@@ -204,6 +220,9 @@ export function PosCheckoutDialog({
       <DialogContent className="flex max-h-[90dvh] flex-col gap-0 overflow-hidden p-0 sm:max-w-lg">
         <DialogHeader className="border-b border-border px-5 py-4">
           <DialogTitle>Cobrar · {tableLabel}</DialogTitle>
+          {summaryLoading && paidMinor === 0 ? (
+            <p className="text-xs text-muted-foreground">Actualizando saldo…</p>
+          ) : null}
           {paidMinor > 0 ? (
             <p className="text-sm text-muted-foreground">
               Pagado{" "}
@@ -233,8 +252,8 @@ export function PosCheckoutDialog({
                   <li key={method.id}>
                     <button
                       type="button"
-                      disabled={pending}
-                      onClick={() => registerPayment(method.id)}
+                      disabled={payPending}
+                      onClick={() => void registerPayment(method.id)}
                       className="flex w-full items-center gap-3 rounded-full border border-border bg-card px-4 py-3 text-left transition-colors hover:bg-muted/80 disabled:opacity-50"
                     >
                       <span className="flex size-10 items-center justify-center rounded-xl bg-muted">
@@ -257,7 +276,7 @@ export function PosCheckoutDialog({
               type="button"
               variant="ghost"
               className="mt-4"
-              disabled={pending}
+              disabled={payPending}
               onClick={() => setPayTarget(null)}
             >
               Volver
@@ -426,7 +445,7 @@ export function PosCheckoutDialog({
                             type="button"
                             size="sm"
                             variant="outline"
-                            disabled={pending || totalMinor <= 0}
+                            disabled={payPending || totalMinor <= 0}
                             onClick={() =>
                               setPayTarget({
                                 mode: "guest",
@@ -450,7 +469,7 @@ export function PosCheckoutDialog({
               <Button
                 type="button"
                 className="h-12 w-full text-base font-semibold"
-                disabled={pending || remainingMinor <= 0}
+                disabled={payPending || remainingMinor <= 0}
                 onClick={() =>
                   setPayTarget({
                     mode: "full",

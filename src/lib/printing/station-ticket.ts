@@ -15,6 +15,8 @@ export type StationTicket = {
   title: string;
   orderNumber: number;
   tableLabel: string | null;
+  /** Steward / mesero when opening the table from Salón. */
+  attendantName?: string | null;
   openedAt: string;
   sentAt: string;
   reprint?: boolean;
@@ -41,14 +43,16 @@ export function buildStationTicket(
   order: Pick<Order, "orderNumber" | "tableLabel" | "openedAt">,
   items: OrderItem[],
   sentAt: Date = new Date(),
-  options?: { reprint?: boolean },
+  options?: { reprint?: boolean; attendantName?: string | null },
 ): StationTicket | null {
   if (items.length === 0) return null;
+  const attendant = options?.attendantName?.trim();
   return {
     station,
     title: STATION_TITLES[station],
     orderNumber: order.orderNumber,
     tableLabel: order.tableLabel,
+    attendantName: attendant || null,
     openedAt: order.openedAt,
     sentAt: sentAt.toISOString(),
     reprint: options?.reprint,

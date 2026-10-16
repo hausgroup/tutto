@@ -40,8 +40,15 @@ function floorBootErrorMessage(code: string) {
   }
 }
 
-function FloorChrome({ boot }: { boot: FloorBootstrap }) {
-  const restaurantId = useActiveRestaurantId();
+function FloorChrome({
+  boot,
+  restaurantId,
+  onPendingBarDrinksChange,
+}: {
+  boot: FloorBootstrap;
+  restaurantId: string;
+  onPendingBarDrinksChange: (tableId: string, pending: boolean) => void;
+}) {
   const [reservePickActive, setReservePickActive] = useState(false);
 
   return (
@@ -76,9 +83,11 @@ function FloorChrome({ boot }: { boot: FloorBootstrap }) {
       </PageHeaderActions>
 
       <FloorPlanView
+        restaurantId={boot.restaurantId ?? restaurantId}
         snapshot={boot.snapshot}
         billTotalsByTableId={boot.billTotalsByTableId}
         pendingBarDrinksByTableId={boot.pendingBarDrinksByTableId}
+        onPendingBarDrinksChange={onPendingBarDrinksChange}
         reservePickActive={reservePickActive}
         onReservePickActiveChange={setReservePickActive}
         className="min-h-0 flex-1"
@@ -182,5 +191,26 @@ export function FloorClientEntry({
     );
   }
 
-  return <FloorChrome boot={boot} />;
+  function handlePendingBarDrinksChange(tableId: string, pending: boolean) {
+    setBoot((current) => {
+      if (!current) return current;
+      const next = { ...current.pendingBarDrinksByTableId };
+      if (pending) next[tableId] = true;
+      else delete next[tableId];
+      const updated = {
+        ...current,
+        pendingBarDrinksByTableId: next,
+      };
+      setCachedFloorBoot(updated);
+      return updated;
+    });
+  }
+
+  return (
+    <FloorChrome
+      boot={boot}
+      restaurantId={restaurantId}
+      onPendingBarDrinksChange={handlePendingBarDrinksChange}
+    />
+  );
 }

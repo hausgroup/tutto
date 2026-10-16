@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState, useTransition } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { Check, ChevronsUpDown, Loader2 } from "lucide-react";
@@ -78,7 +78,6 @@ export function RestaurantSwitcher({
   const setActiveRestaurantOptimistic = useSetActiveRestaurantOptimistic();
   const [syncingId, setSyncingId] = useState<string | null>(null);
   const inFlight = useRef(false);
-  const [, startRefresh] = useTransition();
 
   useEffect(() => {
     if (auth.activeRestaurantId) {
@@ -121,9 +120,7 @@ export function RestaurantSwitcher({
         toast.error(result.error);
         return;
       }
-      startRefresh(() => {
-        router.refresh();
-      });
+      router.refresh();
     } catch {
       setActiveRestaurantOptimistic(previousId);
       toast.error("No pudimos cambiar de restaurante.");

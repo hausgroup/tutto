@@ -1,19 +1,31 @@
 import type { Order, OrderItem } from "@/lib/orders/types";
 
-/** Bar lines still waiting to reach the table (not cancelled / delivered). */
+/** Salón badge: bar drinks marked “con la comida” sent but not yet at the table. */
 export function orderHasPendingBarDrinks(order: Pick<Order, "items">): boolean {
   return order.items.some(itemHasPendingBarDelivery);
 }
 
 export function itemHasPendingBarDelivery(
-  item: Pick<OrderItem, "preparationStation" | "status" | "quantity">,
+  item: Pick<
+    OrderItem,
+    "preparationStation" | "status" | "quantity" | "serveTiming"
+  >,
 ): boolean {
   if (item.quantity <= 0) return false;
+  if (item.serveTiming !== "with_meal") return false;
   if (item.status === "cancelled" || item.status === "delivered") return false;
   if (item.preparationStation !== "bar") return false;
-  // With-meal drinks stay off the salón badge until sent to the bar.
+  // Draft lines stay off the badge until the order is sent.
   if (item.status === "pending") return false;
   return true;
+}
+
+export function orderItemIdsPendingWithMealBarDelivery(
+  items: OrderItem[],
+): string[] {
+  return items
+    .filter((item) => itemHasPendingBarDelivery(item))
+    .map((item) => item.id);
 }
 
 export function pendingBarDrinksByTableFromOrders(
