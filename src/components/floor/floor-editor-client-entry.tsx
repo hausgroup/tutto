@@ -35,25 +35,11 @@ export function FloorEditorClientEntry({
     const pending =
       getPendingFloorBoot(restaurantId) ?? warmFloorBoot({ restaurantId });
     void pending.then((boot) => {
-      const id =
-        boot.snapshot.areas[0]?.restaurantId ??
-        boot.snapshot.tables[0]?.restaurantId;
-      if (id === restaurantId) setSnapshot(boot.snapshot);
+      if (boot.restaurantId === restaurantId) setSnapshot(boot.snapshot);
     });
   }, [restaurantId]);
 
   if (!snapshot) {
-    return (
-      <div className="flex min-h-[min(70vh,calc(100dvh-12rem))] flex-col gap-3">
-        <div className="h-9 w-56 animate-pulse rounded-lg bg-muted" />
-        <div className="min-h-0 flex-1 animate-pulse rounded-[20px] bg-muted" />
-      </div>
-    );
-  }
-
-  const snapshotRestaurantId =
-    snapshot.areas[0]?.restaurantId ?? snapshot.tables[0]?.restaurantId;
-  if (snapshotRestaurantId !== restaurantId) {
     return (
       <div className="flex min-h-[min(70vh,calc(100dvh-12rem))] flex-col gap-3">
         <div className="h-9 w-56 animate-pulse rounded-lg bg-muted" />

@@ -9,6 +9,7 @@ const pendingByRestaurant = new Map<string, Promise<FloorBootstrap>>();
 
 function bootRestaurantId(boot: FloorBootstrap): string | null {
   return (
+    boot.restaurantId ??
     boot.snapshot.areas[0]?.restaurantId ??
     boot.snapshot.tables[0]?.restaurantId ??
     null
@@ -51,6 +52,7 @@ export function setCachedFloorBoot(boot: FloorBootstrap) {
 export function seedDemoFloorBoot(restaurantId: string, canManage = true) {
   if (!canUseDemoExperience()) return;
   setCachedFloorBoot({
+    restaurantId,
     snapshot: createDemoFloorSnapshot(restaurantId),
     billTotalsByTableId: {},
     pendingBarDrinksByTableId: {},

@@ -238,7 +238,14 @@ export function FloorPlanView({
       </div>
 
       <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
-        {isMobile ? (
+        {areas.length === 0 ? (
+          <p className="rounded-2xl bg-card px-4 py-8 text-center text-sm text-muted-foreground ring-1 ring-border">
+            Este local aún no tiene zonas en el salón. Usa{" "}
+            <span className="font-medium text-foreground">Editar plano</span>{" "}
+            para crear áreas y mesas.
+          </p>
+        ) : null}
+        {areas.length > 0 && isMobile ? (
           <div data-floor-grid-scroll className="p-1">
             <FloorMobileTableList
               tables={tablesForArea}
@@ -250,7 +257,7 @@ export function FloorPlanView({
               highlightedTableIds={selectedReserveIds}
             />
           </div>
-        ) : (
+        ) : areas.length > 0 ? (
           <FloorGridView
             tables={tablesForArea}
             onSelect={handleTablePress}
@@ -261,7 +268,7 @@ export function FloorPlanView({
             highlightedTableIds={selectedReserveIds}
             className="min-h-0 flex-1"
           />
-        )}
+        ) : null}
       </div>
 
       <AnimatePresence>

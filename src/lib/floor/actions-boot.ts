@@ -9,6 +9,7 @@ import type { FloorSnapshot } from "@/lib/floor/types";
 import { orderService } from "@/lib/orders/service";
 
 export type FloorBootstrap = {
+  restaurantId: string;
   snapshot: FloorSnapshot;
   billTotalsByTableId: Record<string, number>;
   pendingBarDrinksByTableId: Record<string, true>;
@@ -41,6 +42,7 @@ export async function bootstrapFloorAction(
       ]);
 
     return {
+      restaurantId,
       snapshot,
       billTotalsByTableId,
       pendingBarDrinksByTableId,

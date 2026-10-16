@@ -18,6 +18,17 @@ import {
   warmFloorBoot,
 } from "@/lib/floor/client-cache";
 
+function bootMatchesRestaurant(
+  boot: FloorBootstrap,
+  restaurantId: string,
+): boolean {
+  const bootId =
+    boot.restaurantId ??
+    boot.snapshot.areas[0]?.restaurantId ??
+    boot.snapshot.tables[0]?.restaurantId;
+  return bootId === restaurantId;
+}
+
 function floorBootErrorMessage(code: string) {
   switch (code) {
     case "RESTAURANT_NOT_FOUND":
@@ -98,14 +109,10 @@ export function FloorClientEntry({
     }
 
     const cached = getCachedFloorBoot(restaurantId);
-    if (cached) {
+    if (cached && bootMatchesRestaurant(cached, restaurantId)) {
       applyBoot(cached);
       refreshFloorBootInBackground((fresh) => {
-        if (
-          !cancelled &&
-          (fresh.snapshot.areas[0]?.restaurantId ??
-            fresh.snapshot.tables[0]?.restaurantId) === restaurantId
-        ) {
+        if (!cancelled && bootMatchesRestaurant(fresh, restaurantId)) {
           applyBoot(fresh);
         }
       }, restaurantId);
@@ -122,10 +129,7 @@ export function FloorClientEntry({
     void pending
       .then((result) => {
         if (cancelled) return;
-        const resultRestaurantId =
-          result.snapshot.areas[0]?.restaurantId ??
-          result.snapshot.tables[0]?.restaurantId;
-        if (resultRestaurantId !== restaurantId) {
+        if (!bootMatchesRestaurant(result, restaurantId)) {
           return warmFloorBoot({ force: true, restaurantId }).then(applyBoot);
         }
         applyBoot(result);
@@ -166,10 +170,7 @@ export function FloorClientEntry({
     );
   }
 
-  const bootRestaurantId =
-    boot.snapshot.areas[0]?.restaurantId ??
-    boot.snapshot.tables[0]?.restaurantId;
-  if (bootRestaurantId !== restaurantId) {
+  if (!bootMatchesRestaurant(boot, restaurantId)) {
     return (
       <div
         data-floor-chrome

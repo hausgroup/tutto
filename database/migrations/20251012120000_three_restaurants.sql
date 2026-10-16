@@ -51,6 +51,12 @@ insert into public.floor_areas (id, restaurant_id, name, sort_order) values
     '22222222-2222-4222-8222-222222222202',
     'Salón',
     1
+  ),
+  (
+    '33333333-3333-4333-8333-333333333313',
+    '22222222-2222-4222-8222-222222222222',
+    'Salón',
+    1
   )
 on conflict (id) do nothing;
 
