@@ -4,7 +4,12 @@ import Link from "next/link";
 import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { ChefHat, Pencil, Plus } from "lucide-react";
+import { ChefHat, FileDown, Loader2, Pencil, Plus } from "lucide-react";
+import { buildInventoryListPdf } from "@/lib/inventory/inventory-list-pdf";
+import {
+  downloadPdfBytes,
+  slugForFilename,
+} from "@/lib/floor/download-pdf";
 import {
   createIngredientAction,
   stockMovementAction,
@@ -355,16 +360,19 @@ function IngredientEditor({
 
 export function InventoryPanel({
   restaurantId,
+  restaurantName,
   initialSnapshot,
   canManage,
 }: {
   restaurantId: string;
+  restaurantName: string;
   initialSnapshot: InventorySnapshot;
   canManage: boolean;
 }) {
   const router = useRouter();
   const [tab, setTab] = useState<InventoryTab>("ingredients");
   const [filterIngredient, setFilterIngredient] = useState<string>("all");
+  const [exportingPdf, setExportingPdf] = useState(false);
   const snapshot = initialSnapshot;
 
   const ingredientById = useMemo(
@@ -384,10 +392,48 @@ export function InventoryPanel({
 
   const activeIngredients = snapshot.ingredients.filter((i) => i.isActive);
 
+  async function exportInventoryPdf() {
+    setExportingPdf(true);
+    try {
+      const bytes = await buildInventoryListPdf({
+        restaurantName,
+        ingredients: snapshot.ingredients,
+      });
+      const slug = slugForFilename(restaurantName) || "inventario";
+      const date = new Intl.DateTimeFormat("es-CO", {
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit",
+      })
+        .format(new Date())
+        .replace(/\//g, "-");
+      downloadPdfBytes(bytes, `inventario-${date}-${slug}.pdf`);
+      toast.success("PDF de inventario descargado.");
+    } catch {
+      toast.error("No pudimos generar el PDF.");
+    } finally {
+      setExportingPdf(false);
+    }
+  }
+
   return (
     <div className="space-y-8">
       <PageHeaderActions>
         <div className="flex flex-wrap items-center justify-end gap-2">
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            disabled={exportingPdf}
+            onClick={() => void exportInventoryPdf()}
+          >
+            {exportingPdf ? (
+              <Loader2 className="size-4 animate-spin" aria-hidden />
+            ) : (
+              <FileDown className="size-4" aria-hidden />
+            )}
+            PDF inventario
+          </Button>
           <Button asChild variant="outline" size="sm">
             <Link href="/recipes">
               <ChefHat className="size-4" />

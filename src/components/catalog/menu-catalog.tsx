@@ -14,6 +14,8 @@ import {
   UtensilsCrossed,
   type LucideIcon,
 } from "lucide-react";
+import { CatalogSearchField } from "@/components/catalog/catalog-search-field";
+import { filterMenuProductsByQuery } from "@/lib/catalog/menu-search";
 import {
   createCategoryAction,
   createProductAction,
@@ -136,6 +138,7 @@ export function MenuCatalog({
   const [taxRateBps, setTaxRateBps] = useState(800);
   const [station, setStation] = useState<PreparationStation>("kitchen");
   const [visibleOnMenu, setVisibleOnMenu] = useState(true);
+  const [menuSearchQuery, setMenuSearchQuery] = useState("");
 
   useEffect(() => {
     setSnapshot(initialSnapshot);
@@ -151,13 +154,50 @@ export function MenuCatalog({
     [categories],
   );
 
+  const categoryNameById = useMemo(
+    () => new Map(categories.map((category) => [category.id, category.name])),
+    [categories],
+  );
+
+  const searchActive = menuSearchQuery.trim().length > 0;
+
+  const matchingProductCount = useMemo(() => {
+    if (!searchActive) return 0;
+    return filterMenuProductsByQuery(
+      snapshot.products,
+      menuSearchQuery,
+      categoryNameById,
+    ).length;
+  }, [searchActive, snapshot.products, menuSearchQuery, categoryNameById]);
+
   const uncategorisedProducts = useMemo(
     () =>
-      snapshot.products.filter(
-        (p) => !p.categoryId || !categoryIdSet.has(p.categoryId),
+      filterMenuProductsByQuery(
+        snapshot.products.filter(
+          (p) => !p.categoryId || !categoryIdSet.has(p.categoryId),
+        ),
+        menuSearchQuery,
+        categoryNameById,
       ),
-    [snapshot.products, categoryIdSet],
+    [snapshot.products, categoryIdSet, menuSearchQuery, categoryNameById],
   );
+
+  const visibleCategories = useMemo(() => {
+    if (!searchActive) return categories;
+    return categories.filter((category) =>
+      filterMenuProductsByQuery(
+        snapshot.products.filter((p) => p.categoryId === category.id),
+        menuSearchQuery,
+        categoryNameById,
+      ).length > 0,
+    );
+  }, [
+    categories,
+    searchActive,
+    snapshot.products,
+    menuSearchQuery,
+    categoryNameById,
+  ]);
 
   function stationForCategory(catId: string): PreparationStation {
     return (
@@ -475,9 +515,15 @@ export function MenuCatalog({
 
   return (
     <div className="space-y-8">
-      {canManage ? (
-        <PageHeaderActions>
-          <div className="flex flex-wrap items-center justify-end gap-2">
+      <PageHeaderActions>
+        <div className="flex w-full flex-wrap items-center justify-end gap-2">
+          <CatalogSearchField
+            className="w-full min-w-[11rem] max-w-sm sm:w-56"
+            value={menuSearchQuery}
+            onChange={setMenuSearchQuery}
+            onClear={() => setMenuSearchQuery("")}
+          />
+          {canManage ? (
             <>
               <Dialog
                 open={categoryOpen}
@@ -779,8 +825,16 @@ export function MenuCatalog({
                 </FormDialogContent>
               </Dialog>
             </>
-          </div>
-        </PageHeaderActions>
+          ) : null}
+        </div>
+      </PageHeaderActions>
+
+      {searchActive ? (
+        <p className="text-sm text-muted-foreground">
+          {matchingProductCount === 0
+            ? "Ningún producto coincide con tu búsqueda."
+            : `${matchingProductCount} resultado${matchingProductCount === 1 ? "" : "s"} para “${menuSearchQuery.trim()}”.`}
+        </p>
       ) : null}
 
       <SoftSection title="Categorías">
@@ -790,7 +844,8 @@ export function MenuCatalog({
           </p>
         ) : (
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-4">
-            {categories.map((category, index) => {
+            {(searchActive ? visibleCategories : categories).map(
+              (category, index) => {
               const Icon = CATEGORY_ICONS[index % CATEGORY_ICONS.length]!;
               const count = snapshot.products.filter(
                 (p) => p.categoryId === category.id,
@@ -851,14 +906,17 @@ export function MenuCatalog({
                   </div>
                 </div>
               );
-            })}
+            },
+            )}
           </div>
         )}
       </SoftSection>
 
       {categories.map((category) => {
-        const products = snapshot.products.filter(
-          (p) => p.categoryId === category.id,
+        const products = filterMenuProductsByQuery(
+          snapshot.products.filter((p) => p.categoryId === category.id),
+          menuSearchQuery,
+          categoryNameById,
         );
         if (products.length === 0) return null;
         return (

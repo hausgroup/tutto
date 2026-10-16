@@ -16,6 +16,8 @@ import {
   UtensilsCrossed,
   type LucideIcon,
 } from "lucide-react";
+import { CatalogSearchField } from "@/components/catalog/catalog-search-field";
+import { filterMenuProductsByQuery } from "@/lib/catalog/menu-search";
 import { Button } from "@/components/arc/button/button";
 import type { CatalogSnapshot, Product } from "@/lib/catalog/types";
 import type { DrinkServeTiming, Order, OrderItem } from "@/lib/orders/types";
@@ -443,6 +445,33 @@ export function MobilePosView({
   const [activeCategoryId, setActiveCategoryId] = useState(
     categories[0]?.id ?? "",
   );
+  const [menuSearchQuery, setMenuSearchQuery] = useState("");
+
+  const categoryNameById = useMemo(
+    () => new Map(categories.map((category) => [category.id, category.name])),
+    [categories],
+  );
+
+  const searchActive = menuSearchQuery.trim().length > 0;
+
+  const displayCategories = useMemo(() => {
+    if (!searchActive) return categories;
+    return categories.filter((category) =>
+      filterMenuProductsByQuery(
+        catalog.products.filter(
+          (product) => product.isActive && product.categoryId === category.id,
+        ),
+        menuSearchQuery,
+        categoryNameById,
+      ).length > 0,
+    );
+  }, [
+    categories,
+    searchActive,
+    catalog.products,
+    menuSearchQuery,
+    categoryNameById,
+  ]);
 
   // When the real ticket arrives, apply taps made while opening and sync once.
   useEffect(() => {
@@ -493,12 +522,29 @@ export function MobilePosView({
   }, [order.items]);
 
   const products = useMemo(() => {
-    return catalog.products.filter((p) => {
+    const scoped = catalog.products.filter((p) => {
       if (!p.isActive) return false;
-      if (activeCategoryId && p.categoryId !== activeCategoryId) return false;
+      if (
+        !searchActive &&
+        activeCategoryId &&
+        p.categoryId !== activeCategoryId
+      ) {
+        return false;
+      }
       return true;
     });
-  }, [catalog.products, activeCategoryId]);
+    return filterMenuProductsByQuery(
+      scoped,
+      menuSearchQuery,
+      categoryNameById,
+    );
+  }, [
+    catalog.products,
+    activeCategoryId,
+    menuSearchQuery,
+    categoryNameById,
+    searchActive,
+  ]);
 
   const productById = useMemo(() => {
     const map = new Map<string, Product>();
@@ -974,7 +1020,13 @@ export function MobilePosView({
             <ArrowLeft className="size-4" aria-hidden />
             Salón
           </Button>
-          <div className="min-w-0 flex-1" />
+          <CatalogSearchField
+            className="min-w-0 flex-1"
+            value={menuSearchQuery}
+            onChange={setMenuSearchQuery}
+            onClear={() => setMenuSearchQuery("")}
+            inputClassName="h-[var(--control-height-sm)] min-h-0 max-h-full leading-none"
+          />
           {sessionBill.totalMinor > 0 ? (
             <Button
               type="button"
@@ -996,10 +1048,14 @@ export function MobilePosView({
             Categorías
           </h2>
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-4">
-            {categories.map((cat, index) => {
+            {displayCategories.map((cat, index) => {
               const Icon = CATEGORY_ICONS[index % CATEGORY_ICONS.length]!;
-              const count = catalog.products.filter(
-                (p) => p.isActive && p.categoryId === cat.id,
+              const count = filterMenuProductsByQuery(
+                catalog.products.filter(
+                  (p) => p.isActive && p.categoryId === cat.id,
+                ),
+                menuSearchQuery,
+                categoryNameById,
               ).length;
               const selected = cat.id === activeCategoryId;
               return (
@@ -1035,7 +1091,9 @@ export function MobilePosView({
           </h2>
           {products.length === 0 ? (
             <p className="text-sm text-muted-foreground">
-              No hay productos en esta categoría.
+              {searchActive
+                ? "Ningún producto coincide con tu búsqueda."
+                : "No hay productos en esta categoría."}
             </p>
           ) : (
             <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-4">

@@ -31,10 +31,14 @@ export default async function InventoryPage() {
   }
 
   const canManage = inventoryService.canManage(context, restaurantId);
+  const restaurantName =
+    context.memberships.find((m) => m.restaurantId === restaurantId)
+      ?.restaurantName ?? "Restaurante";
 
   return (
     <InventoryPanel
       restaurantId={restaurantId}
+      restaurantName={restaurantName}
       initialSnapshot={snapshot}
       canManage={canManage}
     />
